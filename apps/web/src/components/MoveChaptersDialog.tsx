@@ -10,6 +10,8 @@ import { api } from '../api';
 import { t } from '../i18n';
 import { Button, plural } from '../ui';
 
+const NEW = 'new';
+
 export function MoveChaptersDialog({
   chapterIds,
   color,
@@ -33,6 +35,12 @@ export function MoveChaptersDialog({
   const reps = useQuery({ queryKey: ['repertoires'], queryFn: api.repertoires });
   const targets = (reps.data ?? []).filter((r) => r.color === color && r.id !== from);
   const [newName, setNewName] = useState('');
+  /** The repertoire picked, or NEW (a new one, named in the field). */
+  const [target, setTarget] = useState<string | null>(null);
+  useEffect(() => {
+    // Nothing to pick: straight to the new repertoire.
+    if (reps.data && !targets.length) setTarget(NEW);
+  }, [reps.data, targets.length]);
   const move = useMutation({
     mutationFn: async (target: { id: string } | { name: string }) => {
       const id = 'id' in target ? target.id : (await api.createRepertoire(target.name, color)).id;
@@ -46,6 +54,11 @@ export function MoveChaptersDialog({
       close();
     },
   });
+  const ready = !move.isPending && (target === NEW ? !!newName.trim() : !!target);
+  const submit = () => {
+    if (!ready) return;
+    move.mutate(target === NEW ? { name: newName.trim() } : { id: target! });
+  };
   return (
     <dialog
       ref={ref}
@@ -62,30 +75,34 @@ export function MoveChaptersDialog({
             )}
           </strong>
         </p>
-        <div className="move-actions-list">
+        {/* Pick a repertoire, or name a new one; one button moves the chapters in both cases. */}
+        <div className="move-actions-list" role="radiogroup">
           {targets.map((r) => (
-            <button key={r.id} type="button" className="move-action" disabled={move.isPending} onClick={() => move.mutate({ id: r.id })}>
-              <span className={`dot inline ${r.color}`} /> {r.name}
+            <label key={r.id} className={`move-target ${target === r.id ? 'on' : ''}`}>
+              <input type="radio" name="move-target" checked={target === r.id} onChange={() => setTarget(r.id)} />
+              <span className="move-target-name">{r.name}</span>
               <span className="muted small-text">{t(plural(r.chapters?.length ?? 0, 'chapitre', 'chapitres'), plural(r.chapters?.length ?? 0, 'chapter', 'chapters'))}</span>
-            </button>
+            </label>
           ))}
-          {reps.data && !targets.length && (
-            <p className="muted small-text">{t('Aucun autre répertoire de cette couleur : créez-en un.', 'No other repertoire of this colour: create one.')}</p>
-          )}
+          <label className={`move-target ${target === NEW ? 'on' : ''}`}>
+            <input type="radio" name="move-target" checked={target === NEW} onChange={() => setTarget(NEW)} />
+            <input
+              className="move-target-new"
+              placeholder={t('Nouveau répertoire', 'New repertoire')}
+              aria-label={t('Nom du nouveau répertoire', 'Name of the new repertoire')}
+              value={newName}
+              onFocus={() => setTarget(NEW)}
+              onChange={(e) => (setNewName(e.target.value), setTarget(NEW))}
+              onKeyDown={(e) => e.key === 'Enter' && ready && submit()}
+            />
+          </label>
         </div>
-        <form
-          className="form-row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (newName.trim()) move.mutate({ name: newName.trim() });
-          }}
-        >
-          <input placeholder={t('Nouveau répertoire', 'New repertoire')} value={newName} onChange={(e) => setNewName(e.target.value)} aria-label={t('Nom du nouveau répertoire', 'Name of the new repertoire')} />
-          <Button type="submit" size="sm" disabled={!newName.trim() || move.isPending}>{t('Créer et déplacer', 'Create and move')}</Button>
-        </form>
         {move.error && <p className="error small-text">{move.error.message}</p>}
         <div className="row move-actions-footer">
           <Button variant="ghost" onClick={close}>{t('Annuler', 'Cancel')}</Button>
+          <Button variant="primary" disabled={!ready} onClick={submit}>
+            {target === NEW ? t('Créer et déplacer', 'Create and move') : t('Déplacer', 'Move')}
+          </Button>
         </div>
       </div>
     </dialog>

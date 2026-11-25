@@ -472,11 +472,16 @@ export function ReviewMode({
 
   const onAnswered = (q: Question, played: RepMove, outcome: Outcome) => {
     // A line replayed from the trail: its next question as played then (nothing recorded); at its
-    // end it stays on the board (a swipe goes on browsing).
+    // end, after the pause of a line's end, the next line of the trail (then the training).
     if (q.replay !== undefined) {
       const next = replay.current?.rest.shift();
       if (next) return ask({ ...next, isNew: false, replay: replay.current!.id });
-      return setLineDone(true);
+      setLineDone(true);
+      jumpTimer.current = setTimeout(() => {
+        jumpTimer.current = undefined;
+        browseNext.current();
+      }, LINE_END_MS);
+      return;
     }
     record(q, outcome);
     const { next, end } = nextAfter(q, played);
@@ -493,8 +498,7 @@ export function ReviewMode({
   /** The positions of the line of `q` from it (put aside by a swipe; by position: cards are the user's). */
   const lineKeys = (q: Item & { expected: RepMove }) => [q.target.fen, ...restOfLine(q.source, q.expected).map((m) => m.toFen)];
   const onSkip = (q: Question) => {
-    // Browsing the trail: the next line, then the training where it was.
-    if (cursor !== null) return cursor + 1 < trail.length ? openAt(cursor + 1) : backToTraining();
+    if (cursor !== null) return browseNext.current();
     if (pending.current) return pending.current();
     closeLine(q);
     for (const k of lineKeys(q)) skipped.current.add(k);
@@ -523,8 +527,17 @@ export function ReviewMode({
     ask({ ...first, lead: undefined, isNew: false, replay: e.id });
   };
 
+  /** Browsing the trail: the next line, then the training where it was (latest render: called from a timer). */
+  const browseNext = useRef(() => {});
+  browseNext.current = () => {
+    if (cursor === null) return;
+    if (cursor + 1 < trail.length) openAt(cursor + 1);
+    else backToTraining();
+  };
+
   /** Back to the training, where it was left (the same question, or the one that was coming). */
   const backToTraining = () => {
+    stopPending();
     const l = live.current;
     live.current = null;
     replay.current = null;

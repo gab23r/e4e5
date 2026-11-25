@@ -18,6 +18,10 @@ FRAME = "#1F4F3A"
 LIGHT = "#E9E3D0"
 DARK = "#3F7A5C"
 ARROW = "#0E2A1F"
+# Around the board in the icons shown as a circle (Android launchers, installed web app).
+RING = "#FFFFFF"
+# Board scale and corner radius inside a circle: a thick white ring all around the board.
+RING_SCALE, RING_RX = 0.98, 60
 
 
 def board(scale=1.0, rx=20):
@@ -54,8 +58,8 @@ def board(scale=1.0, rx=20):
 FULL = 512 / 352
 
 
-def svg(bg="rounded", scale=FULL, rx=20):
-    """The icon cut to a shape (FRAME behind the board), or the board alone ("none")."""
+def svg(bg="rounded", scale=FULL, rx=20, frame=FRAME):
+    """The icon cut to a shape (`frame` behind the board), or the board alone ("none")."""
     shape = {
         "rounded": '<rect width="512" height="512" rx="116"/>',
         "square": '<rect width="512" height="512"/>',
@@ -67,7 +71,7 @@ def svg(bg="rounded", scale=FULL, rx=20):
         return f"{head}{board(scale, rx)}</svg>\n"
     return (
         f'{head}<clipPath id="shape">{shape}</clipPath><g clip-path="url(#shape)">'
-        f'<rect width="512" height="512" fill="{FRAME}"/>{board(scale, rx)}</g></svg>\n'
+        f'<rect width="512" height="512" fill="{frame}"/>{board(scale, rx)}</g></svg>\n'
     )
 
 
@@ -84,22 +88,22 @@ def main():
     png(svg(), ICONS / "icon-512.png", 512)
     # iOS rounds the corners itself: full-bleed square, square board corners.
     png(svg("square", rx=0), ICONS / "apple-touch-icon.png", 180)
-    # Maskable: the launcher crops to roughly the 80% safe circle; the board
-    # fills that area and the arrows stay inside it (like the Android adaptive icon).
-    png(svg("square", FULL * 0.8), ICONS / "icon-maskable-512.png", 512)
+    # Maskable: the launcher crops to the 80% safe circle at most; inside it, the
+    # board in its thick white ring (like the Android icons).
+    png(svg("square", RING_SCALE * 0.8, RING_RX, RING), ICONS / "icon-maskable-512.png", 512)
 
     # Android launcher (legacy, round, adaptive foreground on a FRAME background).
     for d, n in {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}.items():
         png(svg(), RES / f"mipmap-{d}/ic_launcher.png", n)
-        # Round (Android 7 and older): rounded board inside a thin FRAME ring.
-        png(svg("disc", 1.18, rx=80), RES / f"mipmap-{d}/ic_launcher_round.png", n)
-        # Adaptive (Android 8+): 108dp canvas, about 72dp visible after masking.
-        # The board fills the visible area (corners cropped by the mask, like
-        # the round icon); the arrows stay inside the 66dp safe circle.
-        png(svg("none", FULL * 72 / 108), RES / f"mipmap-{d}/ic_launcher_foreground.png", n * 9 // 4)
+        # Round (Android 7 and older): rounded board inside a thick white ring.
+        png(svg("disc", RING_SCALE, RING_RX, RING), RES / f"mipmap-{d}/ic_launcher_round.png", n)
+        # Adaptive (Android 8+): 108dp canvas, about 72dp visible after masking, on a
+        # white background: the same board in its ring as the round icon, inside the
+        # 66dp safe circle.
+        png(svg("none", RING_SCALE * 72 / 108, RING_RX), RES / f"mipmap-{d}/ic_launcher_foreground.png", n * 9 // 4)
     (RES / "values/ic_launcher_background.xml").write_text(
         '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n'
-        f'    <color name="ic_launcher_background">{FRAME}</color>\n</resources>\n'
+        f'    <color name="ic_launcher_background">{RING}</color>\n</resources>\n'
     )
 
 

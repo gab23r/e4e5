@@ -353,7 +353,8 @@ button.badge:focus-visible { outline: 2px solid currentColor; outline-offset: 1p
 .editor-board { margin: 0 calc(-1 * var(--page-pad)); }
 @media (min-width: 900px) {
   .editor { grid-template-columns: minmax(360px, 600px) minmax(340px, 1fr); gap: 24px; }
-  .editor-board { margin: 0; position: sticky; top: calc(var(--appbar-h) + 16px); }
+  /* .editor > : wins over the position: relative below (badges placed in the board area). */
+  .editor > .editor-board { margin: 0; position: sticky; top: calc(var(--appbar-h) + 16px); }
 }
 .board { width: 100%; aspect-ratio: 1; }
 /* A rejected move (components/Board.tsx): red square under the piece, the board shaken. */
@@ -895,18 +896,34 @@ table.explorer tr.move-detail table.games { font-size: 0.85rem; }
 
 /* --- Chapters ----------------------------------------------------------------------------------- */
 /* Editor: the chapters of the repertoire, the open one highlighted. */
-.chapter-bar { margin-top: 0; }
-.chapter-bar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.chapter-bar-head h3 { margin: 0; }
-.chapter-items { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
-.chapter-item { display: flex; align-items: center; gap: 4px; border-radius: var(--radius-sm); }
-.chapter-item.on { background: var(--accent-soft); }
-.chapter-item.paused .chapter-title { color: var(--muted); }
-.chapter-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: none; border: none; color: var(--text); text-align: left; cursor: pointer; font: inherit; }
-.chapter-pick:hover { background: var(--surface-2); border-radius: var(--radius-sm); }
-.chapter-num { width: 1.6em; flex: none; color: var(--muted); font-size: 0.8rem; text-align: right; }
-.chapter-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chapter-item.on .chapter-title { font-weight: 600; }
+.chapter-bar { display: flex; align-items: center; gap: 6px; padding: 0 var(--page-pad) 8px; }
+.chapter-bar select { flex: 1; min-width: 0; text-overflow: ellipsis; }
+.chapter-bar select.paused { color: var(--muted); }
+.chapter-bar > .error { flex-basis: 100%; margin: 0; }
+@media (min-width: 900px) { .chapter-bar { padding: 0 0 8px; } }
+/* Organising the chapters (components/ChaptersDialog.tsx). */
+.chapters-dialog { width: min(480px, calc(100vw - 24px)); }
+.chapters-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: min(60dvh, 520px); overflow-y: auto; }
+.chapters-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 0; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.chapters-row:hover { border-color: var(--border-strong); }
+.chapters-row.on { border-color: var(--accent); }
+.chapters-row.paused .chapter-title { color: var(--muted); }
+.chapters-row.dragging { background: var(--surface-3); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); position: relative; z-index: 1; }
+.chapters-row .grip { display: flex; align-items: center; justify-content: center; width: 30px; align-self: stretch; color: var(--muted); cursor: grab; touch-action: none; }
+.chapters-row.dragging .grip { cursor: grabbing; color: var(--text); }
+.chapters-row .chapter-num { width: 1.4em; flex: none; color: var(--muted); font-size: 0.8rem; text-align: right; }
+.chapters-row .chapter-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chapters-row > .muted { flex: none; }
+.chapters-new { display: flex; flex-direction: column; gap: 6px; }
+.chapters-new .form-row input { flex: 1; min-width: 0; }
+.chapters-actions { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(0, 0, 0, 0.55); border-radius: 12px; }
+.chapters-actions > .game-detail-content { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+/* Moving chapters (components/MoveChaptersDialog.tsx): a repertoire picked, or a new one named. */
+.move-target { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; }
+.move-target.on { border-color: var(--accent); }
+.move-target input[type='radio'] { margin: 0; accent-color: var(--accent); }
+.move-target-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.move-target .move-target-new { flex: 1; min-width: 0; }
 /* List of repertoires: the chapters under a repertoire, boxes to pick them while organising. */
 .rep-chapters { list-style: none; margin: 0; padding: 0 0 0 2px; display: flex; flex-direction: column; gap: 2px; font-size: 0.88rem; max-width: 100%; }
 .rep-chapters li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

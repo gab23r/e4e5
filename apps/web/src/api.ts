@@ -378,7 +378,6 @@ export interface Api {
   saveLine: (chapterId: string, ucis: string[]) => Promise<{ added: number }>;
   updateMove: (chapterId: string, moveId: number, patch: { comment?: string | null; nags?: number[] | null; isMain?: boolean; paused?: boolean }) => Promise<StoredMove>;
   deleteMove: (chapterId: string, moveId: number) => Promise<{ ok: true; pruned: number }>;
-  importPgn: (chapterId: string, pgn: string) => Promise<ImportResult>;
   /** The studies of a Lichess player (private ones too for my own account), most recently updated first. */
   lichessStudiesBy: (username: string) => Promise<LichessStudyListItem[]>;
   lichessStudy: (id: string) => Promise<LichessStudy>;

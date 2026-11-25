@@ -10,3 +10,4 @@ backups/
 apps/web/public/stockfish/
 # Sync tool: personal config (credentials) and downloaded data
 MIGRATION-SERVERLESS.md
+__pycache__/

@@ -1,10 +1,10 @@
-import { pathTo, playUci, Repertoire, repertoireToPgn, START_FEN, totalGames, type PlayedMove } from '@e4e5/core';
+import { pathTo, playUci, Repertoire, START_FEN, totalGames, type PlayedMove } from '@e4e5/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DrawShape } from 'chessground/draw';
 import type { Key } from 'chessground/types';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, type Gap, type ImportResult, type Me, type RepertoireDetail, type StoredMove } from '../api';
+import { api, type Gap, type Me, type RepertoireDetail, type StoredMove } from '../api';
 import { chapterForLine, chapterForPosition, chapterRoot, playLine } from '../chapters';
 import { ChapterBar } from '../components/ChapterBar';
 import { StudySyncDialog } from '../components/StudySyncDialog';
@@ -47,7 +47,6 @@ export function RepertoireEditor({ me }: { me: Me }) {
   const [line, setLine] = useState<LineMove[]>([]);
   const [ply, setPly] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [pushOpen, setPushOpen] = useState(false);
   /** Move whose comment is being written (id), or null. */
@@ -381,30 +380,6 @@ export function RepertoireEditor({ me }: { me: Me }) {
       )}
       actions={<Button variant="primary" icon="play" to={`/r/${id}/train`}>{t('S’entraîner', 'Train')}</Button>}
       menu={[
-        ...(chapter && data.chapters.length > 1
-          ? [{ label: t('S’entraîner sur ce chapitre', 'Train this chapter'), to: `/r/${id}/train?chapter=${chapter.id}` }]
-          : []),
-        ...(ply > 0 && unsaved.length === 0
-          ? [{ label: t('S’entraîner à partir d’ici', 'Train from here'), to: `/r/${id}/train?${new URLSearchParams({ ...(data.chapters.length > 1 ? { chapter: chapterId } : {}), from: fen })}` }]
-          : []),
-        ...(chapter
-          ? [
-              { label: t('Importer un PGN dans ce chapitre', 'Import a PGN into this chapter'), onClick: () => setImportOpen(true) },
-              { label: t('Exporter le chapitre en PGN', 'Export the chapter as PGN'), onClick: () => downloadPgn(repertoireToPgn(rep, chapter.name, chapter.startFen ?? undefined), chapter.name) },
-            ]
-          : []),
-        ...(data.chapters.length > 1
-          ? [
-              {
-                label: t('Exporter le répertoire en PGN (un chapitre par partie)', 'Export the repertoire as PGN (one chapter per game)'),
-                onClick: () =>
-                  downloadPgn(
-                    data.chapters.map((c) => repertoireToPgn(new Repertoire(data.color, data.moves.filter((m) => m.chapterId === c.id)), c.name, c.startFen ?? undefined)).join('\n\n'),
-                    data.name,
-                  ),
-              },
-            ]
-          : []),
         ...(data.lichessStudyId
           ? [
               { label: t('Mettre à jour depuis Lichess', 'Update from Lichess'), onClick: () => setSyncOpen(true) },
@@ -433,7 +408,6 @@ export function RepertoireEditor({ me }: { me: Me }) {
     />
     {syncOpen && <StudySyncDialog repertoire={data} onClose={() => setSyncOpen(false)} />}
     {pushOpen && <PushDialog repertoire={data} onClose={() => setPushOpen(false)} />}
-    {importOpen && chapter && <PgnImport chapterId={chapter.id} onDone={refresh} onClose={() => setImportOpen(false)} />}
     {acting && (
       <MoveActionsDialog
         san={acting.san}
@@ -447,6 +421,16 @@ export function RepertoireEditor({ me }: { me: Me }) {
     )}
     <div className="editor">
       <div className="editor-board">
+        <ChapterBar
+          repertoireId={id}
+          color={data.color}
+          chapters={data.chapters}
+          moves={data.moves}
+          current={chapter}
+          boardFen={ply > 0 && unsaved.length === 0 ? fen : null}
+          onSelect={(c) => selectChapter(c)}
+          onMovedAway={(to, c) => navigate(`/r/${to}?chapter=${c}`)}
+        />
         <div className="board-row">
           {/* Always there (empty when the engine is off): toggling it does not resize the board. */}
           <EvalBar line={engineOn ? engine.lines[0] : undefined} orientation={data.color} off={!engineOn} />
@@ -507,16 +491,6 @@ export function RepertoireEditor({ me }: { me: Me }) {
       </div>
 
       <div className="editor-side">
-        <ChapterBar
-          repertoireId={id}
-          color={data.color}
-          chapters={data.chapters}
-          moves={data.moves}
-          current={chapter}
-          boardFen={ply > 0 && unsaved.length === 0 ? fen : null}
-          onSelect={(c) => selectChapter(c)}
-          onMovedAway={(to, c) => navigate(`/r/${to}?chapter=${c}`)}
-        />
         {chapter && (
         <section className="panel">
           <h3>{data.chapters.length > 1 || chapter.name !== data.name ? chapter.name : t('Dans votre répertoire', 'In your repertoire')}</h3>
@@ -551,6 +525,16 @@ export function RepertoireEditor({ me }: { me: Me }) {
           </div>
           {lastStored && !lastStored.comment && commentEdit !== lastStored.id && (
             <Button size="sm" variant="ghost" icon="pencil" title={t(`Commenter ou annoter ${lastStored.san} (!, ?…)`, `Comment or annotate ${lastStored.san} (!, ?…)`)} onClick={() => setCommentEdit(lastStored.id)} />
+          )}
+          {/* Train from the position on the board (saved line only). */}
+          {ply > 0 && unsaved.length === 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon="target"
+              title={t('S’entraîner à partir d’ici', 'Train from here')}
+              to={`/r/${id}/train?${new URLSearchParams({ ...(data.chapters.length > 1 ? { chapter: chapterId } : {}), from: fen })}`}
+            />
           )}
           </div>
           )}
@@ -746,66 +730,4 @@ function CommentNote({ move, editing, onEdit, onSave, onNag }: { move: StoredMov
       </div>
     </div>
   );
-}
-
-/** Opened from the ⋯ menu of the header. */
-function PgnImport({ chapterId, onDone, onClose }: { chapterId: string; onDone: () => void; onClose: () => void }) {
-  const [pgn, setPgn] = useState('');
-  const [result, setResult] = useState<ImportResult | null>(null);
-  const mutation = useMutation({
-    mutationFn: () => api.importPgn(chapterId, pgn),
-    onSuccess: (r) => {
-      setResult(r);
-      setPgn('');
-      onDone();
-    },
-  });
-  return (
-    <section className="card pgn-import">
-      <div className="card-head">
-        <h3>{t('Importer un PGN', 'Import a PGN')}</h3>
-        <Button size="sm" variant="ghost" onClick={onClose}>{t('Fermer', 'Close')}</Button>
-      </div>
-      <input
-        type="file"
-        accept=".pgn,text/plain"
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          if (file) setPgn(await file.text());
-        }}
-      />
-      <textarea rows={6} placeholder={t('… ou collez le PGN ici (les variantes sont gardées)', '… or paste the PGN here (variations are kept)')} value={pgn} onChange={(e) => setPgn(e.target.value)} />
-      <button disabled={!pgn.trim() || mutation.isPending} onClick={() => mutation.mutate()}>
-        {mutation.isPending ? t('Import…', 'Importing…') : t('Importer', 'Import')}
-      </button>
-      {mutation.error && <p className="error">{String(mutation.error)}</p>}
-      {result && (
-        <p>
-          {t(
-            <>
-              {plural(result.games, 'partie', 'parties')} : {plural(result.added, 'coup ajouté', 'coups ajoutés')}, {result.duplicates} déjà connus
-              {result.unreachable > 0 && `, ${result.unreachable} ignorés (inaccessibles depuis le début du chapitre)`}
-              .
-            </>,
-            <>
-              {plural(result.games, 'game', 'games')}: {plural(result.added, 'move added', 'moves added')}, {result.duplicates} already known
-              {result.unreachable > 0 && `, ${result.unreachable} skipped (unreachable from the start of the chapter)`}
-              .
-            </>,
-          )}
-          {result.errors.length > 0 && <span className="error"> {result.errors.join('; ')}</span>}
-        </p>
-      )}
-    </section>
-  );
-}
-
-/** Downloads a PGN file named after the repertoire or the chapter. */
-function downloadPgn(pgn: string, name: string) {
-  const url = URL.createObjectURL(new Blob([pgn], { type: 'application/x-chess-pgn' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name.replace(/[^\p{L}\p{N}_-]+/gu, '_') || 'repertoire'}.pgn`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
