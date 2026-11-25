@@ -215,6 +215,8 @@ export interface GapReport {
   /** Probability of reaching each position of the repertoires if I play its line. */
   reach: Record<string, number>;
   gaps: Gap[];
+  /** Number of missing moves ignored (left out of `gaps`), per repertoire owning them. */
+  ignored: Record<string, number>;
 }
 export interface GapsResponse {
   white: GapReport | null;
@@ -393,6 +395,10 @@ export interface Api {
   /** An answer: `id` makes it count once, `reviewedAt` is when it was given. */
   review: (id: string, answer: { fen: string; uci: string; grade: Grade; id: string; reviewedAt: number }) => Promise<ReviewCard>;
   gaps: (speeds: string[], ratings: number[], cutoff: number) => Promise<GapsResponse>;
+  /** Ignores a missing move (opponent move `uci` at `fen`): no longer listed. */
+  ignoreGap: (fen: string, uci: string) => Promise<{ ok: true }>;
+  /** Lists the ignored missing moves again. */
+  restoreGaps: () => Promise<{ ok: true }>;
   myGames: (fen: string, color: Color, speeds: string[], days: number) => Promise<MyGames>;
   myGameMoves: (id: string) => Promise<{ moves: string[] }>;
   /** Opening of a line (UCI moves, comma separated), null if none is named. */

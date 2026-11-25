@@ -1,8 +1,8 @@
-import { pathTo, playUci, Repertoire, START_FEN, totalGames, type PlayedMove } from '@e4e5/core';
+import { pathTo, playUci, Repertoire, START_FEN, totalGames, turnOf, type PlayedMove } from '@e4e5/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DrawShape } from 'chessground/draw';
 import type { Key } from 'chessground/types';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type Gap, type Me, type RepertoireDetail, type StoredMove } from '../api';
 import { chapterForLine, chapterForPosition, chapterRoot, playLine } from '../chapters';
@@ -51,6 +51,14 @@ export function RepertoireEditor({ me }: { me: Me }) {
   const [pushOpen, setPushOpen] = useState(false);
   /** Move whose comment is being written (id), or null. */
   const [commentEdit, setCommentEdit] = useState<number | null>(null);
+  /**
+   * Filling the missing moves one after the other (opened from a missing move: the badge of the
+   * list, ?gap=1, or "Coups manquants"): saving a line that fills one opens the next one.
+   */
+  const [gapMode, setGapMode] = useState(false);
+  /** Missing moves ignored here ("fen uci"): hidden at once, before the report is computed again. */
+  const [ignoredNow, setIgnoredNow] = useState<ReadonlySet<string>>(new Set());
+  const isIgnored = (g: Gap) => !!g.move && ignoredNow.has(`${g.fen} ${g.move.uci}`);
 
   // The chapter open (?chapter=, else the first one): its moves are on the board, edits go to it.
   const [params, setParams] = useSearchParams();
@@ -89,6 +97,7 @@ export function RepertoireEditor({ me }: { me: Me }) {
   const openLine = params.get('line');
   useEffect(() => {
     if ((!openFen && !openLine) || !data) return;
+    if (params.get('gap')) setGapMode(true);
     const color = data.color;
     const given = data.chapters.find((c) => c.id === chapterParam);
     const ucis = openLine ? openLine.split(',') : [];
@@ -142,8 +151,53 @@ export function RepertoireEditor({ me }: { me: Me }) {
   const saveLine = useMutation({
     mutationFn: () => api.saveLine(chapterId, shown.map((m) => m.uci)),
     onSuccess: async (r) => {
+      // The missing moves of the repertoire still open before saving, most frequent first.
+      const open = (gapReport.data?.[whole.color]?.gaps ?? []).filter((g) => g.repertoireId === id && !isIgnored(g) && !coveredBy(whole, g));
       await refresh();
-      setNotice(t(`${plural(r.added, 'coup enregistré', 'coups enregistrés')}.`, `${plural(r.added, 'move saved', 'moves saved')}.`));
+      const saved = t(`${plural(r.added, 'coup enregistré', 'coups enregistrés')}.`, `${plural(r.added, 'move saved', 'moves saved')}.`);
+      const fresh = qc.getQueryData<RepertoireDetail>(['repertoire', id]);
+      if (gapMode && fresh) {
+        const now = new Repertoire(fresh.color, fresh.moves);
+        if (open.some((g) => coveredBy(now, g))) {
+          const left = open.filter((g) => !coveredBy(now, g));
+          if (left.length) {
+            openGap(left[0]!, fresh);
+            return setNotice(t(`${saved} Coup manquant suivant (${left.length} restant${left.length > 1 ? 's' : ''}).`, `${saved} Next missing move (${left.length} left).`));
+          }
+          setGapMode(false);
+          return setNotice(t(`${saved} Tous les coups manquants sont comblés.`, `${saved} Every missing move is filled.`));
+        }
+      }
+      setNotice(saved);
+    },
+  });
+  /**
+   * "Save variation". A line ending on an opponent move without my answer (none in the chapter
+   * either): asked first, it is most often an answer forgotten.
+   */
+  const save = () => {
+    const end = shown.at(-1)?.toFen;
+    if (end && turnOf(end) === rep.color && !rep.movesAt(end).length) {
+      const ok = confirm(
+        t(
+          'La variante se termine sur un coup adverse, sans réponse de votre part. L’enregistrer quand même ?',
+          'The variation ends on an opponent move, without an answer of yours. Save it anyway?',
+        ),
+      );
+      if (!ok) return;
+    }
+    saveLine.mutate();
+  };
+  const ignoreGap = useMutation({
+    mutationFn: (g: Gap) => api.ignoreGap(g.fen, g.move!.uci),
+    onMutate: (g) => setIgnoredNow((s) => new Set(s).add(`${g.fen} ${g.move!.uci}`)),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['gaps'] }),
+  });
+  const restoreGaps = useMutation({
+    mutationFn: api.restoreGaps,
+    onSuccess: async () => {
+      setIgnoredNow(new Set());
+      await qc.invalidateQueries({ queryKey: ['gaps'] });
     },
   });
   const renameRep = useMutation({
@@ -215,6 +269,31 @@ export function RepertoireEditor({ me }: { me: Me }) {
     onSuccess: refresh,
   });
 
+  // On a phone the line is one row scrolled sideways: the current move kept in view.
+  const pathRef = useRef<HTMLDivElement>(null);
+  /** Moves hidden on the left / right of the row (an ellipsis shows it). */
+  const [cut, setCut] = useState({ left: false, right: false });
+  const measureCut = () => {
+    const box = pathRef.current;
+    const left = !!box && box.scrollLeft > 2;
+    const right = !!box && box.scrollLeft + box.clientWidth < box.scrollWidth - 2;
+    setCut((c) => (c.left === left && c.right === right ? c : { left, right }));
+  };
+  useEffect(() => {
+    // After the layout: saving a line changes the width of its moves (unsaved ones are in italics).
+    const frame = requestAnimationFrame(() => {
+      const box = pathRef.current;
+      if (box && box.scrollWidth > box.clientWidth) {
+        const current = box.querySelector<HTMLElement>('.current');
+        const left = current?.offsetLeft ?? 0;
+        if (!current) box.scrollLeft = 0;
+        else if (left < box.scrollLeft) box.scrollLeft = left - 8;
+        else if (left + current.offsetWidth > box.scrollLeft + box.clientWidth) box.scrollLeft = left + current.offsetWidth - box.clientWidth + 8;
+      }
+      measureCut();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [ply, line, chapterMoves]);
   /** Back to the start: the line is cleared (its unsaved moves dropped, after a confirmation). */
   const restart = () => {
     const draft = line.some((m) => !rep.has(m.fromFen, m.uci));
@@ -279,6 +358,15 @@ export function RepertoireEditor({ me }: { me: Me }) {
     setLine(moves);
     setPly(moves.length);
   };
+  /** Opens a line from the initial position, in the chapter following it the furthest. */
+  const openLineOf = (ucis: string[], d: RepertoireDetail) => {
+    const target = chapterForLine(d.color, d.chapters, d.moves, playLine(START_FEN, ucis));
+    if (target && target.chapter.id !== chapterId) selectChapter(target.chapter.id, target.line);
+    else if (target) jumpTo(target.line);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  /** Opens a missing move: its line, then the opponent move not prepared (a draft). */
+  const openGap = (g: Gap, d: RepertoireDetail) => openLineOf(g.move ? [...g.ucis, g.move.uci] : g.ucis, d);
 
   // One button for the analysis (on for the browser session only): Lichess at my level (on the
   // opponent's turn, each of its moves scored from the search after it; its box follows the
@@ -323,10 +411,10 @@ export function RepertoireEditor({ me }: { me: Me }) {
     () =>
       new Set(
         (gapReport.data?.[rep.color]?.gaps ?? [])
-          .filter((g) => g.repertoireId === id && g.fen === fen && g.move && !whole.has(fen, g.move.uci))
+          .filter((g) => g.repertoireId === id && g.fen === fen && g.move && !isIgnored(g) && !whole.has(fen, g.move.uci))
           .map((g) => g.move!.uci),
       ),
-    [gapReport.data, whole, id, fen],
+    [gapReport.data, whole, id, fen, ignoredNow],
   );
 
   /**
@@ -371,15 +459,11 @@ export function RepertoireEditor({ me }: { me: Me }) {
   const colorReport = data ? gapReport.data?.[data.color] : undefined;
   // Without the holes the repertoire covers now (saved since the report: hidden at once, until the
   // report is computed again): the opponent move added (or a transposition), or my answer.
-  const covered = (g: Gap) => {
-    if (!g.move) return whole.movesAt(g.fen).length > 0;
-    const after = playUci(g.fen, g.move.uci)?.toFen;
-    return whole.has(g.fen, g.move.uci) || (!!after && whole.movesAt(after).length > 0);
-  };
+  const covered = (g: Gap) => coveredBy(whole, g);
   // Only the holes of the chapter open, reached without its paused moves: an opponent move missing
   // where it has replies, or no answer after one of its opponent moves.
   const inChapter = (g: Gap) => activeChapter.reach.has(g.fen) && (!g.move || activeChapter.rep.movesAt(g.fen).length > 0);
-  const holes = colorReport?.gaps.filter((g) => g.repertoireId === id && inChapter(g) && !covered(g));
+  const holes = colorReport?.gaps.filter((g) => g.repertoireId === id && inChapter(g) && !isIgnored(g) && !covered(g));
   if (error || !data) return <p className="error">{t('Impossible de charger le répertoire.', 'Could not load the repertoire.')}</p>;
 
   const last = line[ply - 1];
@@ -511,7 +595,8 @@ export function RepertoireEditor({ me }: { me: Me }) {
         <section className="panel">
           {line.length > 0 && (
           <div className="line-row">
-          <div className="moves-path">
+          <div className={`path-clip ${cut.left ? 'cut-left' : ''} ${cut.right ? 'cut-right' : ''}`}>
+          <div className="moves-path" ref={pathRef} onScroll={measureCut}>
             {line.map((m, i) => {
               const stored = rep.movesAt(m.fromFen).find((x) => x.uci === m.uci);
               // Paused: the move itself (pause icon), and what follows it on the line (greyed).
@@ -538,6 +623,7 @@ export function RepertoireEditor({ me }: { me: Me }) {
               );
             })}
           </div>
+          </div>
           {lastStored && !lastStored.comment && commentEdit !== lastStored.id && (
             <Button size="sm" variant="ghost" icon="pencil" title={t(`Commenter ou annoter ${lastStored.san} (!, ?…)`, `Comment or annotate ${lastStored.san} (!, ?…)`)} onClick={() => setCommentEdit(lastStored.id)} />
           )}
@@ -556,7 +642,7 @@ export function RepertoireEditor({ me }: { me: Me }) {
 
           {unsaved.length > 0 && (
             <div className="draft">
-              <button className="primary" disabled={saveLine.isPending} onClick={() => saveLine.mutate()}>
+              <button className="primary" disabled={saveLine.isPending} onClick={save}>
                 {t('Enregistrer la variante', 'Save the line')}
               </button>
               <Button size="sm" variant="ghost" onClick={discard}>{t('Annuler', 'Cancel')}</Button>
@@ -670,11 +756,12 @@ export function RepertoireEditor({ me }: { me: Me }) {
           fen={fen}
           cutoff={gapCutoff}
           pending={!!colorReport?.pending}
+          ignored={(colorReport?.ignored?.[id] ?? 0) + (colorReport?.gaps.filter((g) => g.repertoireId === id && isIgnored(g)).length ?? 0)}
+          onIgnore={(g) => ignoreGap.mutate(g)}
+          onRestore={() => restoreGaps.mutate()}
           onOpen={(ucis) => {
-            const target = chapterForLine(data.color, data.chapters, data.moves, playLine(START_FEN, ucis));
-            if (target && target.chapter.id !== chapterId) selectChapter(target.chapter.id, target.line);
-            else if (target) jumpTo(target.line);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            setGapMode(true);
+            openLineOf(ucis, data);
           }}
         />
 
@@ -707,6 +794,16 @@ function applyPatch(moves: StoredMove[], { m, patch }: MovePatch): StoredMove[] 
 
 /** The move annotations offered, from the best to the worst. */
 const NAG_CHOICES = [3, 1, 5, 6, 2, 4];
+
+/**
+ * A missing move the repertoire covers now (saved since the report): the opponent move added (or
+ * a transposition), or an answer where there was none.
+ */
+function coveredBy(whole: Repertoire, g: Gap): boolean {
+  if (!g.move) return whole.movesAt(g.fen).length > 0;
+  const after = playUci(g.fen, g.move.uci)?.toFen;
+  return whole.has(g.fen, g.move.uci) || (!!after && whole.movesAt(after).length > 0);
+}
 
 function CommentNote({ move, editing, onEdit, onSave, onNag }: { move: StoredMove; editing: boolean; onEdit: (on: boolean) => void; onSave: (comment: string) => void; onNag: (nag: number | null) => void }) {
   const [text, setText] = useState(move.comment ?? '');

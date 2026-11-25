@@ -3,7 +3,7 @@
  * them, per named opening, errors (my deviations) and recent games. Shared by the server
  * (routes/games.ts) and the app running without a server.
  */
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, eq, gte, inArray, notLike } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { analyseGames, loadRepertoires, type GameReport } from './gameAnalysis.js';
 import { openingOf } from './openings.js';
@@ -154,9 +154,9 @@ export async function dismissInbox(db: Db, userId: string, key: string): Promise
   return { ok: true };
 }
 
-/** Shows the dismissed inbox items again. */
+/** Shows the dismissed inbox items again (not the missing moves ignored, gaps.ts). */
 export async function restoreInbox(db: Db, userId: string): Promise<{ ok: true }> {
-  await db.delete(inboxDismissed).where(eq(inboxDismissed.userId, userId));
+  await db.delete(inboxDismissed).where(and(eq(inboxDismissed.userId, userId), notLike(inboxDismissed.key, 'gap|%')));
   return { ok: true };
 }
 

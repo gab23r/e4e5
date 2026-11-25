@@ -1,8 +1,7 @@
 import { START_FEN, type Color } from '@e4e5/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { api, type ChapterSummary, type Me, type RepertoireSummary, type TrainingSummary } from '../api';
+import { api, type Me, type RepertoireSummary, type TrainingSummary } from '../api';
 import { locale, t } from '../i18n';
 import { useTrainingSummary } from '../useTrainingSummary';
 import { Button, EmptyState, Icon, PageHeader, Switch, Tabs, plural } from '../ui';
@@ -10,7 +9,6 @@ import { useGaps } from '../useGaps';
 import { lineText } from '../chessText';
 import { useLongPress } from '../components/useLongPress';
 import { MiniBoard } from '../components/MiniBoard';
-import { MoveChaptersDialog } from '../components/MoveChaptersDialog';
 
 const COLORS: { color: Color; label: string }[] = [
   { color: 'white', label: t('Avec les Blancs', 'With White') },
@@ -106,20 +104,6 @@ export function Repertoires({ me }: { me: Me }) {
   const filtered = q !== '' || colorFilter !== 'all' || status !== 'all';
   const statusOptions = STATUSES.filter((s) => s.id !== 'missing' || gaps.data);
 
-  // Organising: chapters picked to move them to another repertoire (to group them).
-  const [organize, setOrganize] = useState(false);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [moving, setMoving] = useState(false);
-  const pick = (id: string) =>
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  const pickedChapters = list.flatMap((r) => (r.chapters ?? []).filter((c) => picked.has(c.id)).map((c) => ({ c, color: r.color })));
-  const pickedColors = [...new Set(pickedChapters.map((p) => p.color))];
-
   return (
     <div className="narrow-page">
       <PageHeader
@@ -162,9 +146,6 @@ export function Repertoires({ me }: { me: Me }) {
               { id: 'black', label: <><span className="dot black" /> {t('Noirs', 'Black')} <span className="count">{byColor('black')}</span></> },
             ]}
           />
-          <Button size="sm" variant={organize ? 'primary' : 'secondary'} onClick={() => (setOrganize(!organize), setPicked(new Set()))}>
-            {organize ? t('Terminer', 'Done') : t('Organiser', 'Organise')}
-          </Button>
           <div className="rep-selects">
             <select aria-label={t('Filtrer par état', 'Filter by state')} value={status} onChange={(e) => setParam('status', e.target.value, 'all')}>
               {statusOptions.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
@@ -174,28 +155,6 @@ export function Repertoires({ me }: { me: Me }) {
             </select>
           </div>
         </div>
-      )}
-
-      {organize && (
-        <div className="notice organize-bar" role="status">
-          <span>
-            {pickedChapters.length
-              ? t(plural(pickedChapters.length, 'chapitre choisi', 'chapitres choisis'), plural(pickedChapters.length, 'chapter picked', 'chapters picked'))
-              : t('Cochez les chapitres à regrouper dans un répertoire.', 'Tick the chapters to group into a repertoire.')}
-            {pickedColors.length > 1 && <span className="error"> {t('· une seule couleur à la fois', '· one colour at a time')}</span>}
-          </span>
-          <Button size="sm" variant="primary" disabled={!pickedChapters.length || pickedColors.length > 1} onClick={() => setMoving(true)}>
-            {t('Déplacer vers…', 'Move to…')}
-          </Button>
-        </div>
-      )}
-      {moving && pickedColors.length === 1 && (
-        <MoveChaptersDialog
-          chapterIds={pickedChapters.map((p) => p.c.id)}
-          color={pickedColors[0]!}
-          onMoved={() => setPicked(new Set())}
-          onClose={() => setMoving(false)}
-        />
       )}
 
       {list.length > 0 && filtered && (
@@ -217,9 +176,6 @@ export function Repertoires({ me }: { me: Me }) {
                 <RepertoireRow
                   key={r.id}
                   rep={r}
-                  organize={organize}
-                  picked={picked}
-                  onPick={pick}
                   counts={counts.get(r.id)}
                   missing={gaps.data ? missing.get(r.id) ?? 0 : undefined}
                   firstGap={firstGap.get(r.id)}
@@ -233,12 +189,8 @@ export function Repertoires({ me }: { me: Me }) {
   );
 }
 
-function RepertoireRow({ rep, counts, missing, firstGap, organize, picked, onPick }: {
+function RepertoireRow({ rep, counts, missing, firstGap }: {
   rep: RepertoireSummary;
-  /** Organising: its chapters with a box to pick them. */
-  organize: boolean;
-  picked: Set<string>;
-  onPick: (chapterId: string) => void;
   counts?: TrainingSummary;
   missing?: number;
   /** Line (UCI) of the most frequent missing move, the move included. */
@@ -313,13 +265,12 @@ function RepertoireRow({ rep, counts, missing, firstGap, organize, picked, onPic
               type="button"
               className="badge hole"
               title={t('Coups adverses fréquents que ce répertoire ne prévoit pas encore : ouvrir le plus fréquent', 'Frequent opponent moves this repertoire does not cover yet: open the most frequent')}
-              onClick={go(firstGap ? `/r/${rep.id}?${new URLSearchParams({ line: firstGap.join(',') })}` : `/r/${rep.id}`)}
+              onClick={go(firstGap ? `/r/${rep.id}?${new URLSearchParams({ line: firstGap.join(','), gap: '1' })}` : `/r/${rep.id}`)}
             >
               {t(plural(missing, 'coup manquant', 'coups manquants'), plural(missing, 'missing move', 'missing moves'))}
             </button>
           )}
         </div>
-        <Chapters rep={rep} organize={organize} picked={picked} onPick={onPick} />
         <div className="toggle" onClick={stop}>
           <Switch
             on={rep.active}
@@ -331,25 +282,5 @@ function RepertoireRow({ rep, counts, missing, firstGap, organize, picked, onPic
         </div>
       </div>
     </div>
-  );
-}
-
-/** While organising: the chapters of a repertoire under its row, each with a box to pick it. */
-function Chapters({ rep, organize, picked, onPick }: { rep: RepertoireSummary; organize: boolean; picked: Set<string>; onPick: (id: string) => void }) {
-  if (!organize) return null;
-  const chapters = rep.chapters ?? [];
-  const stop = (e: React.MouseEvent) => e.stopPropagation();
-  const label = (c: ChapterSummary) => `${c.name} · ${plural(c.moves, t('coup', 'move'), t('coups', 'moves'))}${c.active ? '' : t(' · en pause', ' · paused')}`;
-  return (
-    <ul className="rep-chapters organize" onClick={stop}>
-      {chapters.map((c) => (
-        <li key={c.id} className={c.active ? '' : 'paused'}>
-          <label className="check">
-            <input type="checkbox" checked={picked.has(c.id)} onChange={() => onPick(c.id)} /> {label(c)}
-          </label>
-        </li>
-      ))}
-      {!chapters.length && <li className="muted">{t('Aucun chapitre', 'No chapter')}</li>}
-    </ul>
   );
 }

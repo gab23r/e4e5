@@ -6,13 +6,37 @@
  * any of them is not a hole for the others. Each hole is then given to the repertoire going
  * furthest along its line, past that repertoire's trunk (`gapOwner`), or to none.
  *
+ * Only the opponent moves forgotten among the replies a line prepares are listed: the end of a
+ * line (on my move or on the opponent's, no answer after it) is not a missing move.
+ *
  * Runs on statistics at hand only (`storedStats`), so it answers at once. Positions the analysis
  * needs without them can be fetched in the background (`prefetch`, server): the client asks again
  * until nothing is pending, and each pass may reach deeper positions.
  */
 import { findGaps, gapCandidate, LINE_DEPTHS, mergeChapterMoves, Repertoire, rankRepertoires, turnOf, type Color, type StoredStats } from '@e4e5/core';
+import { and, eq, like } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { repertoireGraphs } from './repertoires.js';
+import { inboxDismissed } from './schema.js';
+
+/**
+ * Missing moves the user chose to ignore (not worth preparing): kept with the dismissed inbox
+ * items, under "gap|<fen>|<uci>". For the colour of the position, whatever the repertoire.
+ */
+const GAP_KEY = 'gap|';
+const gapKey = (fen: string, uci: string) => `${GAP_KEY}${fen}|${uci}`;
+
+/** Ignores a missing move: no longer listed. */
+export async function ignoreGap(db: Db, userId: string, fen: string, uci: string): Promise<{ ok: true }> {
+  await db.insert(inboxDismissed).values({ userId, key: gapKey(fen, uci), createdAt: new Date() }).onConflictDoNothing();
+  return { ok: true };
+}
+
+/** Lists the ignored missing moves again. */
+export async function restoreGaps(db: Db, userId: string): Promise<{ ok: true }> {
+  await db.delete(inboxDismissed).where(and(eq(inboxDismissed.userId, userId), like(inboxDismissed.key, `${GAP_KEY}%`)));
+  return { ok: true };
+}
 
 export interface GapsQuery {
   speeds: string[];
@@ -38,6 +62,9 @@ const MAX_GAPS = 200;
 export async function gapsAnalysis(db: Db, userId: string, q: GapsQuery, storedStats: StoredStats, prefetch?: (fens: string[]) => number) {
   // Each repertoire as one graph (its chapters merged).
   const reps = await repertoireGraphs(db, userId);
+  const ignoredKeys = new Set(
+    (await db.select({ key: inboxDismissed.key }).from(inboxDismissed).where(and(eq(inboxDismissed.userId, userId), like(inboxDismissed.key, `${GAP_KEY}%`)))).map((r) => r.key),
+  );
 
   const analyse = async (color: Color) => {
     const own = reps.filter((r) => r.color === color);
@@ -61,6 +88,10 @@ export async function gapsAnalysis(db: Db, userId: string, q: GapsQuery, storedS
     const pending = prefetch ? prefetch(toFetch) : 0;
 
     const candidates = own.map((r) => gapCandidate(r.id, new Repertoire(color, r.moves)));
+    // Not the ends of lines ("no-answer": nothing prepared after an opponent move), nor the
+    // missing moves ignored.
+    const listed = report.gaps.filter((g) => g.kind === 'missing-reply' && g.prob >= q.cutoff);
+    const shown = listed.filter((g) => !ignoredKeys.has(gapKey(g.fen, g.move!.uci)));
     return {
       truncated: report.truncated,
       /** Positions analysed with statistics of another range (exact ones not stored yet). */
@@ -76,8 +107,14 @@ export async function gapsAnalysis(db: Db, userId: string, q: GapsQuery, storedS
        * which needs the opponent's positions too to bound the ones without statistics).
        */
       reach: Object.fromEntries([...report.reached].map(([fen, p]) => [fen, Math.round(Math.min(1, p) * 1e6) / 1e6])),
-      gaps: report.gaps
-        .filter((g) => g.prob >= q.cutoff)
+      /** Number of missing moves above the cutoff the user ignored (not in `gaps`), per repertoire owning them. */
+      ignored: listed.reduce<Record<string, number>>((n, g) => {
+        if (!ignoredKeys.has(gapKey(g.fen, g.move!.uci))) return n;
+        const owner = rankRepertoires(g, candidates)[0];
+        if (owner?.owns) n[owner.key] = (n[owner.key] ?? 0) + 1;
+        return n;
+      }, {}),
+      gaps: shown
         .slice(0, MAX_GAPS)
         .map((g) => {
           const ranking = rankRepertoires(g, candidates);

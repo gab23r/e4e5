@@ -545,6 +545,16 @@ button.badge:focus-visible { outline: 2px solid currentColor; outline-offset: 1p
 .suggestion-list { list-style: none; margin: 0 0 4px; padding: 0; }
 .suggestion { width: 100%; justify-content: space-between; background: none; border: none; border-top: 1px solid var(--border); border-radius: 0; min-height: 44px; padding: 6px 2px; font-weight: 500; text-align: left; white-space: normal; gap: 10px; }
 .suggestion-list li:first-child .suggestion { border-top: none; }
+/* A missing move and the cross ignoring it. */
+.suggestion-row { display: flex; align-items: stretch; }
+.suggestion-row .suggestion { flex: 1; min-width: 0; }
+.ignore-gap { flex: none; min-height: 44px; min-width: 40px; padding: 0; background: none; border: none; border-top: 1px solid var(--border); border-radius: 0; color: var(--muted); }
+.suggestion-list li:first-child .ignore-gap { border-top: none; }
+.ignore-gap:hover { color: var(--text); background: var(--surface-2); }
+/* The missing move of the position on the board: the whole row (move and cross) in orange. */
+.suggestion-row.here { background: rgba(240, 136, 62, 0.1); }
+.suggestion-row.here .suggestion { background: none; }
+.suggestion-row.here .suggestion:hover, .suggestion-row.here .ignore-gap:hover { background: rgba(240, 136, 62, 0.08); }
 .suggestion:hover { background: var(--surface-2); }
 .suggestion.here { background: rgba(228, 177, 32, 0.08); }
 .suggestion .line { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -940,12 +950,6 @@ table.explorer tr.move-detail table.games { font-size: 0.85rem; }
 .move-target-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .move-target .move-target-new { flex: 1; min-width: 0; }
 /* List of repertoires: the chapters under a repertoire, boxes to pick them while organising. */
-.rep-chapters { list-style: none; margin: 0; padding: 0 0 0 2px; display: flex; flex-direction: column; gap: 2px; font-size: 0.88rem; max-width: 100%; }
-.rep-chapters li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rep-chapters li.paused { color: var(--muted); }
-.rep-chapters a { color: var(--text-2); }
-.rep-chapters.organize { gap: 4px; }
-.organize-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0; position: sticky; top: 8px; z-index: 5; }
 /* Update from a Lichess study: the chapters with what would change. */
 .study-sync-dialog { width: min(520px, calc(100vw - 24px)); }
 .sync-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; }
@@ -958,3 +962,19 @@ table.explorer tr.move-detail table.games { font-size: 0.85rem; }
 .comment-note .comment { color: var(--text); font-style: normal; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* Comments of the next moves: discreet, one line ending with … (the whole comment under the move once played). */
 .rep-moves .move-comment, .next-move .move-comment { color: var(--muted); font-style: italic; font-size: 0.85rem; line-height: 1.35; margin-top: 0; align-self: stretch; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Editor on a phone: the line on one row, scrolled sideways (the current move kept in view). */
+@media (max-width: 899px) {
+  .line-row { align-items: center; }
+  .line-row .path-clip { flex: 1; min-width: 0; position: relative; }
+  .line-row .moves-path { position: relative; white-space: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+  .line-row .moves-path::-webkit-scrollbar { display: none; }
+}
+/* Desktop: the wrapper of the line takes the room of the line. */
+.line-row .path-clip { flex: 1; min-width: 0; }
+/* Moves hidden by the sideways scroll: an ellipsis over a fade, on that side. */
+.path-clip.cut-left::before, .path-clip.cut-right::after {
+  content: '…'; position: absolute; top: 0; bottom: 0; z-index: 1; display: flex; align-items: center;
+  color: var(--text-2); font-weight: 700; pointer-events: none;
+}
+.path-clip.cut-left::before { left: 0; padding-right: 18px; background: linear-gradient(to right, var(--surface) 55%, transparent); }
+.path-clip.cut-right::after { right: 0; padding-left: 18px; background: linear-gradient(to left, var(--surface) 55%, transparent); }

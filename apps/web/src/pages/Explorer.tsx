@@ -185,6 +185,11 @@ export function Explorer({ me }: { me: Me }) {
     });
     return [...all.filter((g) => !g.paused && g.main), ...all.filter((g) => !g.paused && !g.main), ...all.filter((g) => g.paused)];
   }, [prepared, toMove]);
+  /** Forward (▶, →): follows the line if it goes on, else plays the first of the next moves. */
+  const forward = () => {
+    if (line[ply]) goTo(ply + 1);
+    else if (nextMoves[0]) play(nextMoves[0].uci);
+  };
   const qc = useQueryClient();
   /**
    * Main and paused moves, set by dragging the next moves (as in the editor), in every repertoire
@@ -282,7 +287,7 @@ export function Explorer({ me }: { me: Me }) {
       if ((e.target as HTMLElement).closest('textarea, input, select')) return;
       if (e.key.startsWith('Arrow')) e.preventDefault();
       if (e.key === 'ArrowLeft') goTo(ply - 1);
-      if (e.key === 'ArrowRight') goTo(ply + 1);
+      if (e.key === 'ArrowRight') forward();
       if (e.key === 'Home') goTo(0);
       if (e.key === 'End') goTo(line.length);
       if (e.key === 'f') flip();
@@ -343,7 +348,7 @@ export function Explorer({ me }: { me: Me }) {
         <div className="nav">
           <button onClick={() => goTo(0)} title={t('Début (Origine)', 'Start (Home)')}>⏮</button>
           <button onClick={() => goTo(ply - 1)} title={t('Reculer (←)', 'Back (←)')}>◀</button>
-          <button onClick={() => goTo(ply + 1)} title={t('Avancer (→)', 'Forward (→)')}>▶</button>
+          <button onClick={forward} title={t('Avancer (→)', 'Forward (→)')}>▶</button>
           <button onClick={() => goTo(line.length)} title={t('Fin de la ligne (Fin)', 'End of the line (End)')}>⏭</button>
           <button onClick={flip} title={t('Retourner l’échiquier (f)', 'Flip the board (f)')}>⇅</button>
           <AnalysisToggle enabled={analysisOn} onToggle={toggleAnalysis} />

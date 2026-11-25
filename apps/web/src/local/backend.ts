@@ -21,6 +21,8 @@ import {
   dismissInbox,
   gamesReport,
   gapsAnalysis,
+  ignoreGap,
+  restoreGaps,
   getRepertoire,
   applyStudySync,
   getStudy,
@@ -228,6 +230,8 @@ export const localApi = {
     if (!s) notOnDevice();
     return run(async (db) => gapsAnalysis(db, LOCAL_USER, { speeds, ratings, cutoff }, s.stored));
   },
+  ignoreGap: (fen, uci) => run(async (db) => ignoreGap(db, LOCAL_USER, fen, uci)),
+  restoreGaps: () => run(async (db) => restoreGaps(db, LOCAL_USER)),
   lichessStudiesBy: (username) => run(async (db) => studiesBy(await withLichessToken(db), username)),
   lichessStudy: (id) => run(async (db) => getStudy(await withLichessToken(db), id)),
   studySyncPlan: (repertoireId, studyId, hard) =>
