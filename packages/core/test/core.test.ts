@@ -290,4 +290,12 @@ describe('paused alternatives', () => {
     expect(sans(new Repertoire('white', moves))).toEqual(['e4', 'Nf3', 'Bb5', 'Nf3', 'd4']);
     expect(sans(trainingRepertoire('white', moves))).toEqual(['e4', 'Nf3', 'Bb5']);
   });
+
+  it('mainOnly: only my main move where I have several, and not what only follows the others', () => {
+    const moves = pgnToMoves('1. e4 e5 (1... c5 2. Nf3) 2. Nf3 (2. Bc4 Nf6 3. d3) 2... Nc6 3. Bb5 *').moves;
+    const asked = (rep: Repertoire) => trainingPositions(rep).map((p) => rep.movesAt(p.fen).map((m) => m.san).join('/'));
+    expect(asked(trainingRepertoire('white', moves))).toEqual(['e4', 'Nf3/Bc4', 'Bb5', 'd3', 'Nf3']);
+    // The opponent's several replies stay (1... c5 2. Nf3 is still trained).
+    expect(asked(trainingRepertoire('white', moves, { mainOnly: true }))).toEqual(['e4', 'Nf3', 'Bb5', 'Nf3']);
+  });
 });

@@ -21,9 +21,13 @@ export interface RepMove {
 /**
  * The graph the training uses: without the paused moves, so the positions only reachable through
  * one of them are not trained (a position also reached by another move order still is).
+ * `mainOnly`: where I have several moves, only the main one (else the first) is kept, so my
+ * alternatives and what only follows them are not trained either.
  */
-export function trainingRepertoire(color: Color, moves: Iterable<RepMove>): Repertoire {
-  return new Repertoire(color, [...moves].filter((m) => !m.paused));
+export function trainingRepertoire(color: Color, moves: Iterable<RepMove>, { mainOnly = false }: { mainOnly?: boolean } = {}): Repertoire {
+  const rep = new Repertoire(color, [...moves].filter((m) => !m.paused));
+  if (!mainOnly) return rep;
+  return new Repertoire(color, [...rep.all()].filter((m) => !rep.isMyTurn(m.fromFen) || rep.movesAt(m.fromFen)[0]!.uci === m.uci));
 }
 
 /**

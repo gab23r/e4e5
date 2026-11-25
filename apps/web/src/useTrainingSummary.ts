@@ -33,7 +33,7 @@ let last: { prepared: PreparedSummary[]; cards: unknown; key: string; value: Rep
  * it loads every repertoire, which keeps them all on the device for offline training.
  */
 export function useTrainingSummary(me: Me | undefined): { data: RepertoireSummaryCounts[] | undefined } {
-  const { newPerDay, lineDepth } = useSettings();
+  const { newPerDay, lineDepth, mainMoveOnly } = useSettings();
   const list = useQuery({ queryKey: ['repertoires'], queryFn: api.repertoires, enabled: !!me });
   const reps = useQueries({
     queries: (list.data ?? []).map((r) => ({ queryKey: ['repertoire', r.id], queryFn: () => api.repertoire(r.id), enabled: !!me })),
@@ -48,9 +48,9 @@ export function useTrainingSummary(me: Me | undefined): { data: RepertoireSummar
     if (!list.data || reps.some((q) => !q.data)) return undefined;
     // Shortened lines need the probabilities: wait for them (unless they cannot be had).
     if (lineDepth > 0 && gaps.isLoading) return undefined;
-    return reps.map((q) => preparedOf(q.data!, gaps.reach?.[q.data!.color], lineDepth));
+    return reps.map((q) => preparedOf(q.data!, gaps.reach?.[q.data!.color], lineDepth, mainMoveOnly));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list.data, repsVersion, gaps.reach, gaps.isLoading, lineDepth]);
+  }, [list.data, repsVersion, gaps.reach, gaps.isLoading, lineDepth, mainMoveOnly]);
 
   // The counts, after every answer: cheap, and computed once for all the hooks.
   const data = useMemo(() => {

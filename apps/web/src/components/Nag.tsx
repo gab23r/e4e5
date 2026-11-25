@@ -4,13 +4,14 @@
  */
 import { t } from '../i18n';
 
-export const MOVE_NAGS: Record<number, { symbol: string; kind: string; label: string }> = {
-  1: { symbol: '!', kind: 'good', label: t('Bon coup', 'Good move') },
-  2: { symbol: '?', kind: 'mistake', label: t('Erreur', 'Mistake') },
-  3: { symbol: '!!', kind: 'brilliant', label: t('Coup brillant', 'Brilliant move') },
-  4: { symbol: '??', kind: 'blunder', label: t('Gaffe', 'Blunder') },
-  5: { symbol: '!?', kind: 'interesting', label: t('Coup intéressant', 'Interesting move') },
-  6: { symbol: '?!', kind: 'dubious', label: t('Coup douteux', 'Dubious move') },
+/** `color`: the same as the .nag-<kind> classes (styles.css), for the badge on the board. */
+export const MOVE_NAGS: Record<number, { symbol: string; kind: string; label: string; color: string }> = {
+  1: { symbol: '!', kind: 'good', label: t('Bon coup', 'Good move'), color: '#22ac38' },
+  2: { symbol: '?', kind: 'mistake', label: t('Erreur', 'Mistake'), color: '#e69f00' },
+  3: { symbol: '!!', kind: 'brilliant', label: t('Coup brillant', 'Brilliant move'), color: '#26c2a3' },
+  4: { symbol: '??', kind: 'blunder', label: t('Gaffe', 'Blunder'), color: '#df5353' },
+  5: { symbol: '!?', kind: 'interesting', label: t('Coup intéressant', 'Interesting move'), color: '#ea45d8' },
+  6: { symbol: '?!', kind: 'dubious', label: t('Coup douteux', 'Dubious move'), color: '#56b4e9' },
 };
 
 /** The move annotation among the NAGs of a move (the first one, if several). */

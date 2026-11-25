@@ -25,13 +25,14 @@ const kept = new WeakMap<TrainingPosition[], WeakMap<object, Map<number, Set<str
 const prepared = new WeakMap<RepertoireDetail, Map<string, { probs: object | undefined; value: PreparedSummary }>>();
 
 /**
- * The moves trained in a repertoire and their graph (paused moves left out): its active chapters
- * merged (all of them when every chapter is paused), or one chapter (`chapterId`).
+ * The moves trained in a repertoire and their graph (paused moves left out; `mainOnly`: only my
+ * main move where I have several, Paramètres): its active chapters merged (all of them when
+ * every chapter is paused), or one chapter (`chapterId`).
  */
-function trainedOf(detail: RepertoireDetail, chapterId?: string | null) {
+function trainedOf(detail: RepertoireDetail, chapterId?: string | null, mainOnly = false) {
   let byChapter = trained.get(detail);
   if (!byChapter) trained.set(detail, (byChapter = new Map()));
-  const key = chapterId ?? '';
+  const key = `${chapterId ?? ''}|${mainOnly}`;
   let hit = byChapter.get(key);
   if (!hit) {
     let moves: StoredMove[];
@@ -41,14 +42,14 @@ function trainedOf(detail: RepertoireDetail, chapterId?: string | null) {
       const used = new Set((active.length ? active : detail.chapters).map((c) => c.id));
       moves = mergeChapterMoves(detail.moves.filter((m) => used.has(m.chapterId)));
     }
-    byChapter.set(key, (hit = { moves, graph: trainingRepertoire(detail.color, moves) }));
+    byChapter.set(key, (hit = { moves, graph: trainingRepertoire(detail.color, moves, { mainOnly }) }));
   }
   return hit;
 }
 
 /** The graph of a repertoire (or of one of its chapters), as trained (paused moves left out). */
-export function graphOf(detail: RepertoireDetail, chapterId?: string | null): Repertoire {
-  return trainedOf(detail, chapterId).graph;
+export function graphOf(detail: RepertoireDetail, chapterId?: string | null, mainOnly = false): Repertoire {
+  return trainedOf(detail, chapterId, mainOnly).graph;
 }
 
 /** The moves of a repertoire (or of one of its chapters) as trained, paused ones included. */
@@ -84,13 +85,13 @@ export function keptOf(positions: TrainingPosition[], probs: Record<string, numb
 }
 
 /** The part of the training summary that does not depend on the cards (core prepareSummary). */
-export function preparedOf(detail: RepertoireDetail, probs: Record<string, number> | undefined, depth: number): PreparedSummary {
+export function preparedOf(detail: RepertoireDetail, probs: Record<string, number> | undefined, depth: number, mainOnly = false): PreparedSummary {
   let byDepth = prepared.get(detail);
   if (!byDepth) prepared.set(detail, (byDepth = new Map()));
-  const key = String(depth);
+  const key = `${depth}|${mainOnly}`;
   const hit = byDepth.get(key);
   if (hit && hit.probs === probs) return hit.value;
-  const graph = graphOf(detail);
+  const graph = graphOf(detail, null, mainOnly);
   const value = prepareSummary({ id: detail.id, active: detail.active, graph, all: positionsOf(graph) }, probs, depth);
   byDepth.set(key, { probs, value });
   return value;

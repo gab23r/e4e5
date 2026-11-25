@@ -167,6 +167,26 @@ export function Settings({ me }: { me: Me }) {
             <option value="repertoire">{t('Ordre du répertoire', 'Repertoire order')}</option>
           </select>
         </div>
+        <div className="setting">
+          <div className="what">
+            <strong>{t('Plusieurs coups dans une position', 'Several moves in a position')}</strong>
+            <div className="hint">
+              {settings.mainMoveOnly
+                ? t(
+                    'Seul le coup principal (le premier) est révisé ; les autres coups et les lignes qui les suivent ne sont pas entraînés. Jouer l’un d’eux reste accepté.',
+                    'Only the main move (the first) is reviewed; the other moves and the lines after them are not trained. Playing one of them is still accepted.',
+                  )
+                : t(
+                    'Quand votre répertoire prévoit plusieurs coups pour vous dans une même position, chacun est révisé, avec les lignes qui le suivent.',
+                    'When your repertoire has several moves for you in the same position, each one is reviewed, with the lines after it.',
+                  )}
+            </div>
+          </div>
+          <select value={settings.mainMoveOnly ? 'main' : 'all'} onChange={(e) => settings.setMainMoveOnly(e.target.value === 'main')}>
+            <option value="all">{t('Réviser tous mes coups', 'Review all my moves')}</option>
+            <option value="main">{t('Seulement le coup principal', 'Only the main move')}</option>
+          </select>
+        </div>
         <LineDepthSetting me={me} />
         <div className="setting">
           <div className="what">

@@ -849,6 +849,7 @@ function Drill({
           fen={last?.toFen ?? source.root}
           orientation={source.color}
           lastMove={last?.uci}
+          lastMoveNags={last?.nags}
           shapes={shapes}
           onMove={asking ? play : undefined}
         />

@@ -7,6 +7,7 @@ import { parseSquare } from 'chessops';
 import { chessgroundDests } from 'chessops/compat';
 import { useEffect, useRef, useState } from 'react';
 import { BRUSHES } from './arrows';
+import { moveNag } from './Nag';
 import { buzzError } from './haptics';
 import { moveSoundFor, playMoveSound } from './sound';
 import 'chessground/assets/chessground.base.css';
@@ -17,6 +18,8 @@ interface Props {
   fen: string;
   orientation: 'white' | 'black';
   lastMove?: string;
+  /** Annotations of `lastMove`: its symbol (!, ?, !?…) in a badge at the top right of its square. */
+  lastMoveNags?: readonly number[] | null;
   shapes?: DrawShape[];
   /**
    * Called with the UCI of a move played on the board (promotion: queen). Returning false
@@ -28,10 +31,37 @@ interface Props {
 }
 
 const NO_SHAPES: DrawShape[] = [];
+/** Radius of the annotation badge (a square is 100). */
+const BADGE_R = 21;
+
+/**
+ * The badge of a move annotation, drawn by chessground on the destination square (custom SVG: a
+ * square is 100 × 100): a coloured disc with a soft shadow on its top right corner, over the
+ * neighbouring squares, the symbol in white (as on Lichess). On the right or top edge of the board
+ * it stays inside (the board frame clips what goes past it).
+ */
+function nagBadge(square: Key, orientation: 'white' | 'black', nags: readonly number[] | null | undefined): DrawShape | null {
+  const nag = moveNag(nags);
+  if (!nag) return null;
+  const right = square[0] === (orientation === 'white' ? 'h' : 'a');
+  const top = square[1] === (orientation === 'white' ? '8' : '1');
+  const x = right ? 100 - BADGE_R : 92;
+  const y = top ? BADGE_R : 8;
+  const size = nag.symbol.length > 1 ? 30 : 36;
+  return {
+    orig: square,
+    customSvg: {
+      html:
+        `<defs><filter id="nag-shadow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="1.5" dy="2.5" stdDeviation="2" flood-opacity="0.45"/></filter></defs>` +
+        `<g transform="translate(${x} ${y})"><circle r="${BADGE_R}" fill="${nag.color}" filter="url(#nag-shadow)"/>` +
+        `<text text-anchor="middle" dominant-baseline="central" y="1" fill="#fff" font-size="${size}" font-weight="800" font-family="system-ui, sans-serif">${nag.symbol}</text></g>`,
+    },
+  };
+}
 /** How long a rejected move stays on the board. */
 const REJECTED_MS = 600;
 
-export function Board({ fen, orientation, lastMove, shapes = NO_SHAPES, onMove }: Props) {
+export function Board({ fen, orientation, lastMove, lastMoveNags, shapes = NO_SHAPES, onMove }: Props) {
   const el = useRef<HTMLDivElement>(null);
   const cg = useRef<Api | null>(null);
   const onMoveRef = useRef(onMove);
@@ -96,9 +126,12 @@ export function Board({ fen, orientation, lastMove, shapes = NO_SHAPES, onMove }
 
   // Separate from the position: new arrows (e.g. the answer shown after a wrong move) do not
   // put the pieces back.
+  const badge = lastMove ? nagBadge(lastMove.slice(2, 4) as Key, orientation, lastMoveNags) : null;
+  const badgeKey = badge && `${lastMove}${badge.customSvg!.html}`;
   useEffect(() => {
-    cg.current?.setAutoShapes(shapes);
-  }, [shapes]);
+    cg.current?.setAutoShapes(badge ? [...shapes, badge] : shapes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shapes, badgeKey]);
 
   useEffect(() => {
     if (!rejected) return;

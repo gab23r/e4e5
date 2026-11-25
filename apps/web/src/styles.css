@@ -937,3 +937,8 @@ table.explorer tr.move-detail table.games { font-size: 0.85rem; }
 .sync-list .check { align-items: baseline; flex-wrap: wrap; }
 .sync-name { font-weight: 600; }
 .sync-loss { color: #e0a96d; }
+
+/* Editor (and Explorer): the comments of the moves stand out, in the text colour, not greyed. */
+.comment-note { align-items: flex-start; padding: 8px 4px 8px 12px; background: var(--surface-2); border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.comment-note .comment { color: var(--text); font-style: normal; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rep-moves .move-comment, .next-move .move-comment { color: var(--text); font-style: normal; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--accent); }

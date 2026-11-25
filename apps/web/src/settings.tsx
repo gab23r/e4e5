@@ -3,9 +3,10 @@ import { createContext, useContext, useState, type ReactNode } from 'react';
 import type { Me } from './api';
 import { fmt, t } from './i18n';
 
-export type SpeedChoice = 'blitz' | 'rapid' | 'both' | 'all';
+export type SpeedChoice = 'bullet' | 'blitz' | 'rapid' | 'both' | 'all';
 
 export const SPEEDS: Record<SpeedChoice, Speed[]> = {
+  bullet: ['bullet'],
   blitz: ['blitz'],
   rapid: ['rapid'],
   both: ['blitz', 'rapid'],
@@ -21,8 +22,8 @@ export const SPEED_NAMES: Record<string, string> = t(
   { bullet: 'bullet', blitz: 'blitz', rapid: 'rapid', classical: 'classical', daily: 'correspondence' },
 );
 export const SPEED_CHOICES: Record<SpeedChoice, string> = t(
-  { blitz: 'Blitz', rapid: 'Rapide', both: 'Blitz + rapide', all: 'Blitz + rapide + classique' },
-  { blitz: 'Blitz', rapid: 'Rapid', both: 'Blitz + rapid', all: 'Blitz + rapid + classical' },
+  { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapide', both: 'Blitz + rapide', all: 'Blitz + rapide + classique' },
+  { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapid', both: 'Blitz + rapid', all: 'Blitz + rapid + classical' },
 );
 export const speedsLabel = (speeds: string[]) => speeds.map((s) => SPEED_NAMES[s] ?? s).join(' + ');
 
@@ -48,6 +49,9 @@ interface Settings {
   setGamesDays: (n: number) => void;
   gamesSpeeds: string[];
   setGamesSpeeds: (s: string[]) => void;
+  /** Where I have several moves in a position: only the main one (the first) is trained. */
+  mainMoveOnly: boolean;
+  setMainMoveOnly: (on: boolean) => void;
   /** Order of the new positions to learn: most played at my level first, or the repertoire's order. */
   learnOrder: LearnOrder;
   setLearnOrder: (o: LearnOrder) => void;
@@ -110,12 +114,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [gamesDays, setGamesDays] = usePersisted('gamesDays', 90);
   const [gamesSpeeds, setGamesSpeeds] = usePersisted<string[]>('gamesSpeeds', ['blitz', 'rapid', 'classical']);
   const [learnOrder, setLearnOrder] = usePersisted<LearnOrder>('learnOrder', 'frequency');
+  const [mainMoveOnly, setMainMoveOnly] = usePersisted('mainMoveOnly', false);
   const [sound, setSound] = usePersisted(SOUND_KEY, true);
   const [haptics, setHaptics] = usePersisted(HAPTICS_KEY, true);
   const [answerSeconds, setAnswerSeconds] = usePersisted('answerSeconds', 15);
   return (
     <Ctx.Provider
-      value={{ speed, setSpeed, range, setRange, newPerDay, setNewPerDay, lineDepth, setLineDepth, gapCutoff: gapCutoffFor(lineDepth), gamesDays, setGamesDays, gamesSpeeds, setGamesSpeeds, learnOrder, setLearnOrder, sound, setSound, haptics, setHaptics, answerSeconds, setAnswerSeconds }}
+      value={{ speed, setSpeed, range, setRange, newPerDay, setNewPerDay, lineDepth, setLineDepth, gapCutoff: gapCutoffFor(lineDepth), gamesDays, setGamesDays, gamesSpeeds, setGamesSpeeds, learnOrder, setLearnOrder, mainMoveOnly, setMainMoveOnly, sound, setSound, haptics, setHaptics, answerSeconds, setAnswerSeconds }}
     >
       {children}
     </Ctx.Provider>
@@ -142,7 +147,7 @@ export function ratingFor(me: Me, speed: SpeedChoice): { rating: number; source:
   );
   if (lichess) return { rating: lichess, source: 'Lichess' };
   const ratings = me.chesscom?.ratings;
-  const chesscom = mean(SPEEDS[speed].map((s) => (s === 'blitz' || s === 'rapid' ? ratings?.[s] : undefined)).filter((r): r is number => !!r));
+  const chesscom = mean(SPEEDS[speed].map((s) => (s === 'bullet' || s === 'blitz' || s === 'rapid' ? ratings?.[s] : undefined)).filter((r): r is number => !!r));
   if (chesscom) return { rating: chesscom, source: 'Chess.com' };
   return { rating: 1500, source: null };
 }

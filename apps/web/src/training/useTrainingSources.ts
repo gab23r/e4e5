@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { api, type Grade, type ReviewCard } from '../api';
 import { cardsQuery, recordReview } from '../offline/reviews';
 import { chapterRoot } from '../chapters';
+import { useSettings } from '../settings';
 import { graphOf, keptOf, movesOf, positionsFrom, positionsOf } from './graphCache';
 
 /** Summary of the cards of my moves in a position (several moves: the weakest). */
@@ -56,6 +57,8 @@ export interface Shorten {
  */
 export function useTrainingSources(ids: string[], from: string | null, shorten?: Shorten | null, chapter?: string | null) {
   const qc = useQueryClient();
+  // Only my main move where I have several (Paramètres).
+  const { mainMoveOnly } = useSettings();
   const repQueries = useQueries({
     queries: ids.map((id) => ({ queryKey: ['repertoire', id], queryFn: () => api.repertoire(id) })),
   });
@@ -72,7 +75,7 @@ export function useTrainingSources(ids: string[], from: string | null, shorten?:
         const data = repQueries[i]?.data;
         if (!data) return [];
         const info = chapter ? data.chapters.find((c) => c.id === chapter) : undefined;
-        const rep = graphOf(data, info?.id);
+        const rep = graphOf(data, info?.id, mainMoveOnly);
         const root = info ? chapterRoot(info) : START_FEN;
         const probs = shorten && shorten.minReach > 0 ? shorten.probs(data.color) : undefined;
         const kept = probs ? keptOf(positionsOf(rep), probs, shorten!.minReach) : null;
@@ -84,7 +87,7 @@ export function useTrainingSources(ids: string[], from: string | null, shorten?:
         return [{ id, data, name, root, rep, paused, positions: kept ? positions.filter((p) => kept.has(p.fen)) : positions }];
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ids.join(), version, from, shorten, chapter],
+    [ids.join(), version, from, shorten, chapter, mainMoveOnly],
   );
 
   // The review state, after every answer: only small functions reading the cards.

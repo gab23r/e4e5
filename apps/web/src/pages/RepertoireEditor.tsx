@@ -210,6 +210,14 @@ export function RepertoireEditor({ me }: { me: Me }) {
     onSuccess: refresh,
   });
 
+  /** Back to the start: the line is cleared (its unsaved moves dropped, after a confirmation). */
+  const restart = () => {
+    const draft = line.some((m) => !rep.has(m.fromFen, m.uci));
+    if (draft && !confirm(t('Abandonner les coups non enregistrés de cette ligne ?', 'Drop the unsaved moves of this line?'))) return;
+    setLine([]);
+    setPly(0);
+    setNotice(null);
+  };
   const goTo = (n: number) => {
     setPly(Math.max(0, Math.min(n, line.length)));
     setNotice(null);
@@ -286,7 +294,7 @@ export function RepertoireEditor({ me }: { me: Me }) {
       if (e.key.startsWith('Arrow')) e.preventDefault(); // no page scroll
       if (e.key === 'ArrowLeft') goTo(ply - 1);
       if (e.key === 'ArrowRight') forward();
-      if (e.key === 'Home') goTo(0);
+      if (e.key === 'Home') restart();
       if (e.key === 'End') goTo(line.length);
       if (e.key === 'a' || e.key === 'e' || e.key === 'n') toggleAnalysis(!analysisOn);
     };
@@ -434,10 +442,10 @@ export function RepertoireEditor({ me }: { me: Me }) {
         <div className="board-row">
           {/* Always there (empty when the engine is off): toggling it does not resize the board. */}
           <EvalBar line={engineOn ? engine.lines[0] : undefined} orientation={data.color} off={!engineOn} />
-          <Board fen={fen} orientation={data.color} lastMove={last?.uci} shapes={shapes} onMove={play} />
+          <Board fen={fen} orientation={data.color} lastMove={last?.uci} lastMoveNags={lastStored?.nags} shapes={shapes} onMove={play} />
         </div>
         <div className="nav">
-          <button onClick={() => goTo(0)} title={t('Début (Origine)', 'Start (Home)')}>⏮</button>
+          <button onClick={restart} title={t('Début : efface la ligne (Origine)', 'Start: clears the line (Home)')}>⏮</button>
           <button onClick={() => goTo(ply - 1)} title={t('Reculer (←)', 'Back (←)')}>◀</button>
           <button onClick={forward} title={t('Avancer (→)', 'Forward (→)')}>▶</button>
           <button onClick={() => goTo(line.length)} title={t('Fin de la ligne (Fin)', 'End of the line (End)')}>⏭</button>
@@ -493,7 +501,6 @@ export function RepertoireEditor({ me }: { me: Me }) {
       <div className="editor-side">
         {chapter && (
         <section className="panel">
-          <h3>{data.chapters.length > 1 || chapter.name !== data.name ? chapter.name : t('Dans votre répertoire', 'In your repertoire')}</h3>
           {line.length > 0 && (
           <div className="line-row">
           <div className="moves-path">
