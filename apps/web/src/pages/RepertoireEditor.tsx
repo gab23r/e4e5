@@ -475,8 +475,8 @@ export function RepertoireEditor({ me }: { me: Me }) {
       back="/repertoires"
       title={data.name}
       subtitle={t(
-        `${data.color === 'white' ? 'Blancs' : 'Noirs'} · ${plural(data.chapters.length, 'chapitre', 'chapitres')} · ${plural(whole.size, 'coup', 'coups')}${data.active ? '' : ' · en pause'}`,
-        `${data.color === 'white' ? 'White' : 'Black'} · ${plural(data.chapters.length, 'chapter', 'chapters')} · ${plural(whole.size, 'move', 'moves')}${data.active ? '' : ' · paused'}`,
+        `${data.color === 'white' ? 'Blancs' : 'Noirs'} · ${plural(data.chapters.length, 'chapitre', 'chapitres')}${data.active ? '' : ' · en pause'}`,
+        `${data.color === 'white' ? 'White' : 'Black'} · ${plural(data.chapters.length, 'chapter', 'chapters')}${data.active ? '' : ' · paused'}`,
       )}
       actions={<Button variant="primary" icon="play" to={`/r/${id}/train`}>{t('S’entraîner', 'Train')}</Button>}
       menu={[
