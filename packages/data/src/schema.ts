@@ -252,5 +252,6 @@ export const graphColumns = {
   uci: repMoves.uci,
   san: repMoves.san,
   isMain: repMoves.isMain,
+  paused: repMoves.paused,
 };
 export type RepMoveRow = typeof repMoves.$inferSelect;

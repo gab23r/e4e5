@@ -10,7 +10,7 @@
  * needs without them can be fetched in the background (`prefetch`, server): the client asks again
  * until nothing is pending, and each pass may reach deeper positions.
  */
-import { findGaps, gapCandidate, LINE_DEPTHS, Repertoire, rankRepertoires, turnOf, type Color, type StoredStats } from '@e4e5/core';
+import { findGaps, gapCandidate, LINE_DEPTHS, mergeChapterMoves, Repertoire, rankRepertoires, turnOf, type Color, type StoredStats } from '@e4e5/core';
 import type { Db } from './db.js';
 import { repertoireGraphs } from './repertoires.js';
 
@@ -43,7 +43,9 @@ export async function gapsAnalysis(db: Db, userId: string, q: GapsQuery, storedS
     const own = reps.filter((r) => r.color === color);
     if (!own.length) return null;
     const colorMoves = own.flatMap((r) => r.moves);
-    const merged = new Repertoire(color, colorMoves);
+    // A move in several repertoires comes once, paused only if paused in all of them (findGaps
+    // does not explore past a paused move).
+    const merged = new Repertoire(color, mergeChapterMoves(colorMoves));
     // Only opponent positions of the repertoire need statistics.
     const opponentFens = [...new Set(colorMoves.map((m) => m.fromFen))].filter((f) => turnOf(f) !== color);
     const stored = await storedStats(opponentFens);

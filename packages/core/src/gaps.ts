@@ -17,6 +17,9 @@
  * the cutoff count with the depth reached so far, so a smaller cutoff is more exact. These
  * shares (depth, lost, ends, unknown, belowCutoff) only add up with `split` (the default).
  *
+ * A paused move counts as prepared (not a hole), but the games going through it end their
+ * preparation there, like at the end of a line: nothing behind it is explored (no holes there).
+ *
  * Each position is explored once: the probabilities of its move orders are summed before going
  * on (linear in the size of the repertoire, however many transpositions).
  */
@@ -97,6 +100,8 @@ interface Edge {
   move: RepMove;
   /** Share of the position's probability carried (1 per move of mine without `split`). */
   share: number;
+  /** A paused move: the games going through it end their preparation (not followed). */
+  paused?: boolean;
 }
 
 /** What follows a position, independent of its probability (built once per position). */
@@ -117,7 +122,7 @@ export function findGaps(
     if (rep.isMyTurn(fen)) {
       if (!moves.length) return { kind: 'no-answer', stats: true, edges: [] };
       const share = split ? 1 / moves.length : 1;
-      return { kind: 'mine', edges: moves.map((m) => ({ to: m.toFen, move: m, share })) };
+      return { kind: 'mine', edges: moves.map((m) => ({ to: m.toFen, move: m, share, paused: !!m.paused })) };
     }
     if (!moves.length) return { kind: 'line-end', stats: true, edges: [] };
     const stats = statsAt(fen);
@@ -131,7 +136,7 @@ export function findGaps(
       seen += share;
       const own = moves.find((m) => m.uci === em.uci);
       if (own) {
-        edges.push({ to: own.toFen, move: own, share });
+        edges.push({ to: own.toFen, move: own, share, paused: !!own.paused });
         continue;
       }
       const played = playUci(fen, em.uci);
@@ -151,8 +156,9 @@ export function findGaps(
     const top = stack[stack.length - 1]!;
     const edges = nodes.get(top.fen)!.edges;
     if (top.next < edges.length) {
-      const to = edges[top.next++]!.to;
-      if (nodes.has(to)) continue;
+      const edge = edges[top.next++]!;
+      const to = edge.to;
+      if (edge.paused || nodes.has(to)) continue;
       if (nodes.size >= maxNodes) {
         truncated = true;
         continue;
@@ -210,6 +216,11 @@ export function findGaps(
     }
     const node = nodes.get(fen)!;
     const flow = (e: Edge, q: number) => {
+      if (e.paused) {
+        ends += q;
+        stop(q, 'line-end');
+        return;
+      }
       const i = index.get(e.to);
       if (i === undefined || i <= index.get(fen)!) {
         // A cycle, or past the node budget: not followed.

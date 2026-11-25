@@ -110,6 +110,11 @@ export function RepertoireEditor({ me }: { me: Me }) {
     else setParams(chapter ? { chapter: chapter.id } : {}, { replace: true });
   }, [openFen, openLine, data]);
   const stored = useMemo(() => new Map(chapterMoves.map((m) => [`${m.fromFen} ${m.uci}`, m])), [chapterMoves]);
+  /** The chapter open without its paused moves, and the positions it reaches from its start. */
+  const activeChapter = useMemo(() => {
+    const active = new Repertoire(data?.color ?? 'white', chapterMoves.filter((m) => !m.paused));
+    return { rep: active, reach: active.reachable(root) };
+  }, [data?.color, chapterMoves, root]);
   const storedMove = (m: LineMove) => stored.get(`${m.fromFen} ${m.uci}`);
   const fen = line[ply - 1]?.toFen ?? root;
   // The moves trained (main first), then the paused ones.
@@ -371,7 +376,10 @@ export function RepertoireEditor({ me }: { me: Me }) {
     const after = playUci(g.fen, g.move.uci)?.toFen;
     return whole.has(g.fen, g.move.uci) || (!!after && whole.movesAt(after).length > 0);
   };
-  const holes = colorReport?.gaps.filter((g) => g.repertoireId === id && !covered(g));
+  // Only the holes of the chapter open, reached without its paused moves: an opponent move missing
+  // where it has replies, or no answer after one of its opponent moves.
+  const inChapter = (g: Gap) => activeChapter.reach.has(g.fen) && (!g.move || activeChapter.rep.movesAt(g.fen).length > 0);
+  const holes = colorReport?.gaps.filter((g) => g.repertoireId === id && inChapter(g) && !covered(g));
   if (error || !data) return <p className="error">{t('Impossible de charger le répertoire.', 'Could not load the repertoire.')}</p>;
 
   const last = line[ply - 1];
@@ -637,7 +645,7 @@ export function RepertoireEditor({ me }: { me: Me }) {
                         <San san={m.san} nags={m.nags} />
                       </button>
                       {m.isMain && !m.paused && here.filter((x) => !x.paused).length > 1 && <span className="badge">{t('principal', 'main')}</span>}
-                      {m.comment && <div className="comment move-comment">{m.comment}</div>}
+                      {m.comment && <div className="comment move-comment" title={m.comment}>{m.comment}</div>}
                     </div>
                     <span className="grip" title={t('Glisser : en haut, coup principal ; en bas, en pause', 'Drag: to the top, main move; to the bottom, paused')} {...handle(m.id)}>
                       <Icon name="grip" size={16} />

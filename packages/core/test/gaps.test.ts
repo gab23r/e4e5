@@ -98,6 +98,23 @@ describe('gap finder', () => {
     expect(findGaps(r2, (fen) => t2.get(fen)).lost).toBeCloseTo(0);
   });
 
+  it('ends the preparation at a paused move: prepared, nothing behind it explored', () => {
+    const moves = pgnToMoves('1. e4 e5 (1... c5 2. Nf3) 2. Nf3 *').moves;
+    const r = new Repertoire('white', moves.map((m) => (m.san === 'c5' ? { ...m, paused: true } : m)));
+    const afterSic = after('e2e4', 'c7c5');
+    const statsAsked: string[] = [];
+    const table = new Map([
+      [after('e2e4'), stats([['e7e5', 'e5', 50], ['c7c5', 'c5', 50]])],
+      [after('e2e4', 'c7c5', 'g1f3'), stats([['d7d6', 'd6', 1]])],
+    ]);
+    const report = findGaps(r, (fen) => (statsAsked.push(fen), table.get(fen)));
+    expect(report.gaps).toEqual([]); // 1... c5 is not a hole, and nothing after it is
+    expect(report.lost).toBeCloseTo(0);
+    expect(report.ends).toBeCloseTo(1);
+    expect(report.reached.has(afterSic)).toBe(false);
+    expect(statsAsked).toEqual([after('e2e4')]);
+  });
+
   it('does not explore positions under the cutoff', () => {
     const r = rep('white', '1. e4 e5 (1... a6 2. d4) 2. Nf3 *');
     const statsAsked: string[] = [];

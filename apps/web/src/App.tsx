@@ -3,7 +3,6 @@ import { useEffect } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { api } from './api';
 import { startReviewSync } from './offline/reviews';
-import { useOnline } from './offline/useOffline';
 import { InstallPrompt } from './components/InstallPrompt';
 import { useTrainingSummary } from './useTrainingSummary';
 import type { Me } from './api';
@@ -63,14 +62,11 @@ function localProblem(error: unknown): string {
 }
 
 /**
- * Everything is on the device: only its database failing to open is said (`error`), and being
- * offline matters only for Lichess and Chess.com.
+ * Everything is on the device: only its database failing to open is said. Being offline is not
+ * (it matters only for Lichess and Chess.com, whose screens say when they cannot be reached).
  */
-function OfflineBanner({ dbDown, error }: { dbDown: boolean; error: unknown }) {
-  const online = useOnline();
-  if (dbDown) return <p className="notice error offline-banner" role="status">{localProblem(error)}</p>;
-  if (!online) return <p className="notice offline-banner" role="status">{t('Hors ligne : tout fonctionne sur l’appareil, sauf ce qui passe par Lichess et Chess.com (parties, études).', 'Offline: everything works on the device, except what goes through Lichess and Chess.com (games, studies).')}</p>;
-  return null;
+function DatabaseBanner({ error }: { error: unknown }) {
+  return error ? <p className="notice error offline-banner" role="status">{localProblem(error)}</p> : null;
 }
 
 function Badge({ n, label }: { n: number; label: string }) {
@@ -141,7 +137,7 @@ export function App() {
         />
       </header>
 
-      <OfflineBanner dbDown={!!me.error} error={me.error} />
+      <DatabaseBanner error={me.error} />
 
       <main className="page">
         <Routes>
