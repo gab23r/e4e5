@@ -98,8 +98,14 @@ jobs:
             aria2c "${common[@]}" --seed-time=0 --bt-stop-timeout=600 --follow-torrent=mem "$URL.torrent" || true
           if [ "$(stat -c %s "$file" 2>/dev/null || echo 0)" != "$size" ] || [ -f "$file.aria2" ]; then
             echo "Torrent incomplet : HTTP, 4 connexions, en reprenant"
-            .github/scripts/with-progress.sh "Téléchargement (HTTP)" "$log" \
-              aria2c "${common[@]}" --continue=true --max-connection-per-server=4 --split=4 --min-split-size=64M -o "$(basename "$URL")" "$URL"
+            http=(--max-connection-per-server=4 --split=4 --min-split-size=64M -o "$(basename "$URL")" "$URL")
+            # Resuming fails when the torrent describes another version of the file (a month
+            # published again, its .torrent not updated): then from the start.
+            .github/scripts/with-progress.sh "Téléchargement (HTTP)" "$log" aria2c "${common[@]}" --continue=true "${http[@]}" || {
+              echo "Reprise impossible (fichier du torrent différent) : HTTP depuis le début"
+              rm -f "$file" "$file.aria2"
+              .github/scripts/with-progress.sh "Téléchargement (HTTP, depuis le début)" "$log" aria2c "${common[@]}" "${http[@]}"
+            }
           fi
           [ "$(stat -c %s "$file")" = "$size" ] || { echo "Taille inattendue : $(stat -c %s "$file") au lieu de $size"; exit 1; }
           echo "source=$file" >> "$GITHUB_OUTPUT"
