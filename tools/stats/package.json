@@ -6,6 +6,7 @@
   "scripts": {
     "build-stats": "tsx src/build.ts",
     "split": "tsx src/split.ts",
+    "merge": "tsx src/merge.ts",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },

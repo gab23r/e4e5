@@ -2,7 +2,13 @@
 # rating bucket for the app (tools/stats). The month (~31 GB) is downloaded once, by BitTorrent
 # (Lichess publishes a .torrent per month; HTTP if it fails), and read twice from the disk: read
 # from the network, each pass was limited by the download (1 to 3 MB/s, over 3 h per pass). The
-# files go to a release stats-YYYY-MM; the Pages workflow then publishes the latest one.
+# files go to a release stats-YYYY-MM, with the month's whole stats.db (month-YYYY-MM.db.zst).
+#
+# Then the year: the stats.db of the last 12 months released are merged (tools/stats merge: the
+# counters added up per position) and split per rating bucket with a threshold of 500 games, into
+# a release stats-year-YYYY-MM (the last month); the Pages workflow publishes the latest one (else
+# the latest month). A month's stats.db keeps the positions played 50 times that month (every
+# speed and level together): a month where a position was rarer adds nothing to its year.
 #
 # Progress: the check run "Statistiques : progression" on the commit shows the last lines of the
 # download and of the build every minute while the job runs.
@@ -17,6 +23,10 @@ on:
       max_games:
         description: Games read at most (test run, release stats-YYYY-MM-test, streamed); empty for all
         required: false
+      year_only:
+        description: Only merge the months already released into the year (no month built)
+        type: boolean
+        default: false
   schedule:
     # The 8th of each month: last month's database is published by then.
     - cron: '0 5 8 * *'
@@ -34,6 +44,7 @@ env:
 
 jobs:
   build:
+    if: ${{ !inputs.year_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
@@ -104,6 +115,11 @@ jobs:
             pnpm --filter stats --fail-if-no-match build-stats "$SOURCE" --out "$RUNNER_TEMP/stats.db" ${MAX_GAMES:+--max-games "$MAX_GAMES"}
       - name: Split per rating bucket
         run: pnpm --filter stats --fail-if-no-match split --in "$RUNNER_TEMP/stats.db" --out "$RUNNER_TEMP/stats-files"
+      - name: The month's whole stats.db (merged into the year)
+        if: env.MAX_GAMES == ''
+        env:
+          MONTH: ${{ steps.month.outputs.month }}
+        run: zstd -T0 -12 -q "$RUNNER_TEMP/stats.db" -o "$RUNNER_TEMP/stats-files/month-$MONTH.db.zst" && ls -la "$RUNNER_TEMP/stats-files"
       - name: Release
         env:
           TAG: ${{ steps.month.outputs.tag }}
@@ -122,3 +138,74 @@ jobs:
         run: |
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/check-runs/$PROGRESS_CHECK" -f status=completed -f conclusion="$CONCLUSION" \
             -f "output[title]=Terminé ($CONCLUSION)" -f "output[summary]=$(tail -n 8 "$RUNNER_TEMP/build.log" 2>/dev/null | sed 's/^/    /')" > /dev/null || true
+
+  # The last 12 months released, merged: the statistics the app downloads.
+  year:
+    needs: build
+    # After a whole month built (not the test runs), or asked alone (year_only).
+    if: ${{ always() && (inputs.year_only || (needs.build.result == 'success' && github.event_name != 'push' && !inputs.max_games)) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # One merge at a time (the months caught up in parallel each end with one): the last one waiting
+    # runs, with every month released by then.
+    concurrency:
+      group: stats-year
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Tools (zstd)
+        run: command -v zstd || (sudo apt-get update && sudo apt-get install -y zstd)
+      - run: pnpm install --frozen-lockfile --filter stats...
+      - name: The months released (the last 12)
+        id: months
+        run: |
+          # The monthly releases with their whole stats.db, the latest first.
+          months=$(gh release list -R "$GITHUB_REPOSITORY" --limit 200 --json tagName \
+            --jq '.[].tagName | select(test("^stats-[0-9]{4}-[0-9]{2}$")) | ltrimstr("stats-")' | sort -r)
+          dir="$RUNNER_TEMP/months"
+          mkdir -p "$dir"
+          last=""
+          files=()
+          for m in $months; do
+            # Within 12 months of the latest month found.
+            if [ -n "$last" ] && [ "$m" \< "$(date -u -d "$last-01 -11 months" +%Y-%m)" ]; then break; fi
+            if gh release download "stats-$m" -R "$GITHUB_REPOSITORY" -p "month-$m.db.zst" -D "$dir" 2>/dev/null; then
+              zstd -d -q --rm "$dir/month-$m.db.zst" -o "$dir/month-$m.db"
+              files+=("$dir/month-$m.db")
+              last="${last:-$m}"
+              echo "Mois $m"
+            else
+              echo "Mois $m : pas de stats.db complet (release d'avant la fusion), ignoré"
+            fi
+          done
+          echo "last=$last" >> "$GITHUB_OUTPUT"
+          echo "files=${files[*]}" >> "$GITHUB_OUTPUT"
+          df -h /
+      - name: Merge
+        if: steps.months.outputs.last != ''
+        env:
+          FILES: ${{ steps.months.outputs.files }}
+        run: |
+          # shellcheck disable=SC2086
+          pnpm --filter stats --fail-if-no-match merge $FILES --out "$RUNNER_TEMP/year.db"
+          rm -f $FILES
+      - name: Split per rating bucket (500 games)
+        if: steps.months.outputs.last != ''
+        run: pnpm --filter stats --fail-if-no-match split --in "$RUNNER_TEMP/year.db" --out "$RUNNER_TEMP/year-files" --min 500
+      - name: Release
+        if: steps.months.outputs.last != ''
+        env:
+          LAST: ${{ steps.months.outputs.last }}
+        run: |
+          test -s "$RUNNER_TEMP/year-files/index.json" || { echo "Pas de fichiers : release inchangée"; exit 1; }
+          period=$(jq -r '.period | "\(.since) à \(.until)"' "$RUNNER_TEMP/year-files/index.json")
+          tag="stats-year-$LAST"
+          gh release delete "$tag" --yes --cleanup-tag || true
+          gh release create "$tag" "$RUNNER_TEMP"/year-files/* --target "$GITHUB_SHA" --latest=false \
+            --title "Statistiques d'ouvertures sur 12 mois ($period)" \
+            --notes "Base de parties Lichess de $period (database.lichess.org, CC0), les mois fusionnés, les positions jouées au moins 500 fois par tranche Elo ; un fichier par tranche pour l'app (tools/stats). Liste : index.json."

@@ -1,6 +1,6 @@
 # GitHub Pages: the web app (data in the browser, games from
 # Lichess and Chess.com, statistics from the files next to it), and the opening statistics of the
-# latest release stats-YYYY-MM under /stats/ (Pages allows other origins: CORS *, for the mobile
+# latest release stats-year-YYYY-MM (12 months; else the latest month stats-YYYY-MM) under /stats/ (Pages allows other origins: CORS *, for the mobile
 # app). https://<owner>.github.io/<repo>/
 name: Pages
 
@@ -53,12 +53,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag=$(gh release list -R "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
-            --jq '[.[] | select(.tagName | test("^stats-[0-9]{4}-[0-9]{2}$"))] | sort_by(.createdAt) | last | .tagName // empty')
-          if [ -z "$tag" ]; then echo "Pas encore de release stats-YYYY-MM : app sans statistiques"; exit 0; fi
+          latest() {
+            gh release list -R "$GITHUB_REPOSITORY" --limit 200 --json tagName \
+              --jq "[.[].tagName | select(test(\"^$1\$\"))] | sort | last // empty"
+          }
+          tag=$(latest 'stats-year-[0-9]{4}-[0-9]{2}')
+          tag=${tag:-$(latest 'stats-[0-9]{4}-[0-9]{2}')}
+          if [ -z "$tag" ]; then echo "Pas encore de release de statistiques : app sans statistiques"; exit 0; fi
           echo "Statistiques : $tag"
           mkdir -p site/stats
-          gh release download "$tag" -R "$GITHUB_REPOSITORY" -D site/stats
+          # The app's files only (not the month's whole stats.db, kept for the year's merge).
+          gh release download "$tag" -R "$GITHUB_REPOSITORY" -D site/stats -p 'stats-*.db.gz' -p index.json
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
