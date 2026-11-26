@@ -6,12 +6,12 @@
   /* Greys of the chess.com app: a dark warm background, the cards lighter on it with a dark
      edge under them (a little relief), the bars in between. */
   --bg: #262421;
-  --surface: #383633;
-  --surface-2: #42403d;
-  --surface-3: #4d4a47;
-  --border: #423f3c;
-  --border-strong: #57534f;
-  --card-shadow: 0 3px 0 rgba(0, 0, 0, 0.22);
+  --surface: #2f2d2a;
+  --surface-2: #383633;
+  --surface-3: #43403d;
+  --border: #393633;
+  --border-strong: #4d4a46;
+  --card-shadow: 0 3px 0 rgba(0, 0, 0, 0.28);
   /* The bars (top, tabs): translucent, the page scrolling under them blurred (frosted glass). */
   --bar-bg: rgba(47, 43, 40, 0.8);
   --bar-blur: blur(18px) saturate(160%);
