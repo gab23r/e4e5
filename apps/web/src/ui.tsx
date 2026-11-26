@@ -30,6 +30,7 @@ const paths = {
   analysis: 'M3 3h11v11H3zM3 8.5h11M8.5 3v11M16 20a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM18.9 18.9 22 22',
   /** Give up (Abandon). */
   flag: 'M5 21V4M5 4h11l-2 4 2 4H5',
+  replay: 'M3 12a9 9 0 1 0 2.6-6.4L3 8M3 3v5h5',
   /** A light bulb (Indice). */
   bulb: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z',
   engine: 'M7 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM10 10h4v4h-4zM9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3',

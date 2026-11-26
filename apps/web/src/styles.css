@@ -478,7 +478,7 @@ button.badge:focus-visible { outline: 2px solid currentColor; outline-offset: 1p
 .play-actions button:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
 .play-actions button:disabled { opacity: 0.4; }
 /* Against the bot (training/PlayMode.tsx): on desktop the actions stay under the board. On a phone
-   the screen is filled: the board comes down, Indice / Abandon / Répertoire at the bottom. */
+   the screen is filled: the board comes down, Indice / Abandon / Rejouer / Répertoire at the bottom. */
 .play-screen > .play-actions { grid-column: 1; }
 @media (max-width: 899px) {
   .page:has(.play-screen) { display: flex; flex-direction: column; }
@@ -1170,7 +1170,6 @@ a.card.home-gap { display: flex; flex-direction: column; gap: 22px; align-items:
 /* The tail of the bubble, towards the face. */
 .bot-bubble::before { content: ''; position: absolute; left: -7px; top: 50%; width: 14px; height: 14px; background: inherit; transform: translateY(-50%) rotate(45deg); border-radius: 2px; }
 .bot-bubble p { position: relative; margin: 0; font-size: 0.95rem; line-height: 1.4; font-weight: 600; }
-.bot-bubble button { position: relative; align-self: stretch; }
 .bot-bubble.won { box-shadow: 0 0 0 2px #3fb950, 0 4px 14px rgba(0, 0, 0, 0.3); }
 .bot-bubble.lost { box-shadow: 0 0 0 2px #e5534b, 0 4px 14px rgba(0, 0, 0, 0.3); }
 @keyframes bot-talk-in { from { opacity: 0; transform: translateX(-6px) scale(0.97); } to { opacity: 1; transform: none; } }

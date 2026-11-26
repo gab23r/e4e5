@@ -10,7 +10,7 @@ import { BotAvatar } from '../components/BotAvatar';
 import { OpeningName } from '../components/OpeningName';
 import { AnswerTimer, useAnswerClock } from './AnswerTimer';
 import { answerArrows, REPLY_MS, savedSession, saveSession } from './common';
-import { LineDone, QuizLine, SwipeBar, useMyMovesHere } from './DrillParts';
+import { LineDone, QuizLine, useMyMovesHere } from './DrillParts';
 import { outcomeOf } from './Feedback';
 import type { Source } from './useTrainingSources';
 import { t } from '../i18n';
@@ -299,7 +299,7 @@ export function PlayMode({
     if (!line || line.phase !== 'ask' || line.revealed) return;
     setLine(miss(line, undefined, true));
   };
-  /** Swipe to the left: another line (nothing recorded). */
+  /** Rejouer: another line at once (nothing recorded). */
   const skip = () => startRef.current();
   /** Répertoire: the position in the editor of the repertoire it is in. */
   const toRepertoire = () => {
@@ -343,7 +343,6 @@ export function PlayMode({
             phase={line?.phase}
             first={score.lines === 0}
             ended={!!line && line.history.length > 0}
-            onReplay={() => startRef.current()}
           />
         ) : (
           <OpeningName ucis={line?.history.map((m) => m.uci) ?? []} />
@@ -363,11 +362,10 @@ export function PlayMode({
         {line?.phase === 'end' && line.history.length > 0 && !bot && <LineDone text={t('Fin de ce que vous connaissez', 'End of what you know')} />}
         {bot && <OpeningName ucis={line?.history.map((m) => m.uci) ?? []} />}
         <AnswerTimer clock={clock} />
-        {/* Under the board: the line and the swipe bar. */}
+        {/* Under the board: the line. */}
         <QuizLine moves={line?.history ?? []} firstPly={plyOf(root)} />
-        <SwipeBar onSkip={skip} label={t('changer de ligne', 'change line')} />
       </div>
-      {/* At the bottom of the screen (phone): Indice, Abandon and Répertoire. */}
+      {/* At the bottom of the screen (phone): Indice, Abandon, Rejouer and Répertoire. */}
       <div className="play-actions">
         <button type="button" onClick={hint} disabled={line?.phase !== 'ask' || clock.paused || line.hinted || line.revealed} title={t('Montrer la pièce à jouer', 'Show the piece to move')}>
           <Icon name="bulb" size={24} />
@@ -376,6 +374,10 @@ export function PlayMode({
         <button type="button" onClick={giveUp} disabled={line?.phase !== 'ask' || clock.paused || line.revealed} title={t('Voir la réponse (coup compté comme manqué)', 'See the answer (move counted as missed)')}>
           <Icon name="flag" size={24} />
           {t('Abandon', 'Give up')}
+        </button>
+        <button type="button" onClick={skip} title={t('Rejouer une nouvelle ligne', 'Play a new line')}>
+          <Icon name="replay" size={24} />
+          {t('Rejouer', 'Replay')}
         </button>
         <button type="button" onClick={toRepertoire} disabled={!line} title={t('Ouvrir cette position dans votre répertoire', 'Open this position in your repertoire')}>
           <Icon name="book" size={24} />
@@ -432,7 +434,7 @@ function pick(lines: readonly [string, string][]): [string, string] {
 
 /**
  * The bot above the board, its face and a speech bubble: first what it is about (`intro`), then a
- * word while we play; at the end of a line (won or lost) its comment and the button to replay (Enter).
+ * word while we play; at the end of a line (won or lost) its comment (Rejouer at the bottom, or Enter).
  */
 function BotTalk({
   name,
@@ -440,14 +442,12 @@ function BotTalk({
   phase,
   first,
   ended,
-  onReplay,
 }: {
   name: string;
   intro: string;
   phase: Phase | undefined;
   first: boolean;
   ended: boolean;
-  onReplay: () => void;
 }) {
   const result = phase === 'lost' ? 'lost' : phase === 'end' && ended ? 'won' : null;
   // A new message for each result (kept while it is shown).
@@ -458,11 +458,6 @@ function BotTalk({
       <BotAvatar name={name} size={56} />
       <div className={`bot-bubble${result ? ` ${result}` : ''}`} role="status" key={said ? said[0] : 'talk'}>
         <p>{text}</p>
-        {result && (
-          <button type="button" className="primary" onClick={onReplay} autoFocus>
-            <Icon name="play" size={16} /> {t('Rejouer', 'Play again')}
-          </button>
-        )}
       </div>
     </div>
   );
