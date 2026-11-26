@@ -1,5 +1,6 @@
 /** Small UI kit: icons, buttons, page header, menus, tabs, empty states. Styles: styles.css. */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { t } from './i18n';
 
@@ -135,7 +136,32 @@ export function Menu({ items, label, trigger, title = t('Plus d’actions', 'Mor
 }
 
 // --- Page header -----------------------------------------------------------------------------------
-export function PageHeader({ title, subtitle, back, actions, menu }: { title: ReactNode; subtitle?: ReactNode; back?: string; actions?: ReactNode; menu?: MenuItem[] }) {
+/**
+ * The slot of the app bar where the page header goes on a phone (the bar shows the page's title
+ * instead of the app's name). Given by App.
+ */
+export const AppbarSlot = createContext<HTMLElement | null>(null);
+
+const PHONE = '(max-width: 899px)';
+/** The screen is narrow (phone layout: tab bar at the bottom, page title in the app bar). */
+export function usePhone() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const q = window.matchMedia(PHONE);
+      q.addEventListener('change', onChange);
+      return () => q.removeEventListener('change', onChange);
+    },
+    () => window.matchMedia(PHONE).matches,
+  );
+}
+
+export function PageHeader(props: { title: ReactNode; subtitle?: ReactNode; back?: string; actions?: ReactNode; menu?: MenuItem[] }) {
+  const slot = useContext(AppbarSlot);
+  const phone = usePhone();
+  return phone && slot ? createPortal(<PageHeaderContent {...props} />, slot) : <PageHeaderContent {...props} />;
+}
+
+function PageHeaderContent({ title, subtitle, back, actions, menu }: { title: ReactNode; subtitle?: ReactNode; back?: string; actions?: ReactNode; menu?: MenuItem[] }) {
   return (
     <header className="page-header">
       {back && <Button variant="ghost" icon="back" to={back} title={t('Retour', 'Back')} className="back" />}

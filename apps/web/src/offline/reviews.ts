@@ -12,7 +12,7 @@ import { recallOf, scheduleReview, type Grade } from '@e4e5/core';
 import type { QueryClient } from '@tanstack/react-query';
 import { get, set } from 'idb-keyval';
 import { movedStore } from '../legacyNames';
-import { api, ApiError, UNREACHABLE, type ReviewCard } from '../api';
+import { api, ApiError, UNREACHABLE, type ReviewCard, type TrainingMode } from '../api';
 
 export interface PendingReview {
   id: string;
@@ -22,6 +22,8 @@ export interface PendingReview {
   uci: string;
   grade: Grade;
   reviewedAt: number;
+  /** Réviser or Se tester (absent in answers queued before the modes were recorded). */
+  mode?: TrainingMode;
 }
 
 // Formerly 'tabiya-outbox' (the app's former name): moved once, before the first read.
@@ -117,7 +119,7 @@ export async function flushReviews() {
     const q = await load();
     for (let item = mine(q)[0]; item; item = mine(q)[0]) {
       try {
-        const card = await api.review(item.repertoireId, { fen: item.fen, uci: item.uci, grade: item.grade, id: item.id, reviewedAt: item.reviewedAt });
+        const card = await api.review(item.repertoireId, { fen: item.fen, uci: item.uci, grade: item.grade, id: item.id, reviewedAt: item.reviewedAt, mode: item.mode });
         q.splice(q.indexOf(item), 1);
         // The server's card, unless the move was answered again since (that answer is still queued),
         // or it is the one computed on the device (the usual case: no new render while training).

@@ -35,7 +35,7 @@ function withoutItem(r: GamesReport, item: InboxItem): GamesReport {
 
 export function GameErrorCard({ item, rep, onDone }: { item: InboxItem; rep: RepertoireSummary | undefined; onDone: (message: string) => void }) {
   const qc = useQueryClient();
-  // Dealt with: off the list (and the badge of Lacunes) at once, then the new report; the
+  // Dealt with: off the list (and the badge of Mes parties) at once, then the new report; the
   // Entraîner badge counts a position sent to review (cards).
   const hide = () => {
     qc.setQueriesData<GamesReport>({ queryKey: ['games-report'] }, (r) => r && withoutItem(r, item));

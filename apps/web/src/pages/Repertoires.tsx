@@ -16,23 +16,6 @@ const COLORS: { color: Color; label: string }[] = [
 ];
 
 type ColorFilter = 'all' | Color;
-type StatusFilter = 'all' | 'due' | 'new' | 'missing' | 'active' | 'paused';
-type Sort = 'name' | 'due' | 'lines' | 'recent';
-
-const STATUSES: { id: StatusFilter; label: string }[] = [
-  { id: 'all', label: t('Tous les états', 'All states') },
-  { id: 'due', label: t('À revoir', 'Due') },
-  { id: 'new', label: t('Nouvelles lignes', 'New lines') },
-  { id: 'missing', label: t('Coups manquants', 'Missing moves') },
-  { id: 'active', label: t('En entraînement', 'In training') },
-  { id: 'paused', label: t('En pause', 'Paused') },
-];
-const SORTS: { id: Sort; label: string }[] = [
-  { id: 'recent', label: t('Plus récents', 'Most recent') },
-  { id: 'name', label: t('Nom', 'Name') },
-  { id: 'due', label: t('À revoir', 'Due') },
-  { id: 'lines', label: t('Nombre de lignes', 'Number of lines') },
-];
 
 /** Lower case without accents, for the search. */
 const norm = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
@@ -57,8 +40,8 @@ export function Repertoires({ me }: { me: Me }) {
   const [params, setParams] = useSearchParams();
   const query = params.get('q') ?? '';
   const colorFilter = oneOf<ColorFilter>(params.get('color'), ['all', 'white', 'black'], 'all');
-  const status = oneOf<StatusFilter>(params.get('status'), STATUSES.map((s) => s.id), 'all');
-  const sort = oneOf<Sort>(params.get('sort'), SORTS.map((s) => s.id), 'recent');
+  // The paused repertoires shown or not (?paused=0: hidden).
+  const showPaused = params.get('paused') !== '0';
   const setParam = (key: string, value: string, def: string) =>
     setParams(
       (p) => {
@@ -76,33 +59,14 @@ export function Repertoires({ me }: { me: Me }) {
   const matches = (r: RepertoireSummary) => {
     if (q && !norm(r.name).includes(q) && !r.chapters?.some((c) => norm(c.name).includes(q))) return false;
     if (colorFilter !== 'all' && r.color !== colorFilter) return false;
-    const c = counts.get(r.id);
-    switch (status) {
-      case 'due': return r.active && !!c && c.dueLines > 0;
-      case 'new': return r.active && !!c && c.newLines > 0;
-      case 'missing': return (missing.get(r.id) ?? 0) > 0;
-      case 'active': return r.active;
-      case 'paused': return !r.active;
-      default: return true;
-    }
+    return showPaused || r.active;
   };
   const byName = (a: RepertoireSummary, b: RepertoireSummary) => a.name.localeCompare(b.name, locale, { sensitivity: 'base', numeric: true });
-  const compare = (a: RepertoireSummary, b: RepertoireSummary) => {
-    const ca = counts.get(a.id);
-    const cb = counts.get(b.id);
-    switch (sort) {
-      case 'due': {
-        const due = (r: RepertoireSummary, c?: TrainingSummary) => (r.active && c ? c.dueLines : -1);
-        return due(b, cb) - due(a, ca) || byName(a, b);
-      }
-      case 'lines': return (cb?.totalLines ?? -1) - (ca?.totalLines ?? -1) || byName(a, b);
-      case 'recent': return b.createdAt.localeCompare(a.createdAt) || byName(a, b);
-      default: return byName(a, b);
-    }
-  };
+  // The most recent first.
+  const compare = (a: RepertoireSummary, b: RepertoireSummary) => b.createdAt.localeCompare(a.createdAt) || byName(a, b);
   const shown = list.filter(matches).sort(compare);
-  const filtered = q !== '' || colorFilter !== 'all' || status !== 'all';
-  const statusOptions = STATUSES.filter((s) => s.id !== 'missing' || gaps.data);
+  const filtered = q !== '' || colorFilter !== 'all' || !showPaused;
+  const pausedCount = list.filter((r) => !r.active).length;
 
   return (
     <div className="narrow-page">
@@ -146,14 +110,12 @@ export function Repertoires({ me }: { me: Me }) {
               { id: 'black', label: <><span className="dot black" /> {t('Noirs', 'Black')} <span className="count">{byColor('black')}</span></> },
             ]}
           />
-          <div className="rep-selects">
-            <select aria-label={t('Filtrer par état', 'Filter by state')} value={status} onChange={(e) => setParam('status', e.target.value, 'all')}>
-              {statusOptions.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-            </select>
-            <select aria-label={t('Trier', 'Sort')} value={sort} onChange={(e) => setParam('sort', e.target.value, 'recent')}>
-              {SORTS.map((s) => <option key={s.id} value={s.id}>{t('Tri : ', 'Sort: ')}{s.label}</option>)}
-            </select>
-          </div>
+          {pausedCount > 0 && (
+            <label className="rep-paused-filter">
+              <Switch on={showPaused} onChange={() => setParam('paused', showPaused ? '0' : '1', '1')} label={t('Afficher les répertoires en pause', 'Show the paused repertoires')} />
+              <span>{t(`En pause (${pausedCount})`, `Paused (${pausedCount})`)}</span>
+            </label>
+          )}
         </div>
       )}
 
@@ -226,6 +188,12 @@ function RepertoireRow({ rep, counts, missing, firstGap }: {
     >
       <div className="rep-thumb" title={rep.trunk?.length ? lineText(rep.trunk) : t('Position initiale', 'Starting position')}>
         <MiniBoard fen={rep.trunkFen ?? START_FEN} orientation={rep.color} arrows={arrows} />
+        {/* Paused: marked on the thumbnail (without the mark, it is trained). */}
+        {!rep.active && (
+          <span className="rep-paused-mark" title={t('En pause : pas entraîné', 'Paused: not trained')}>
+            <Icon name="pause" size={22} />
+          </span>
+        )}
       </div>
       <div className="info">
         <Link className="name" to={`/r/${rep.id}`} onClick={stop}>{rep.name}</Link>
@@ -248,18 +216,8 @@ function RepertoireRow({ rep, counts, missing, firstGap }: {
             </span>
           )}
         </div>
-        {/* Clickable: review this repertoire, or open the editor on its most frequent missing move. */}
+        {/* Clickable: open the editor on its most frequent missing move (lines due and new ones: on the home page). */}
         <div className="badges">
-          {rep.active && counts && counts.dueLines > 0 && (
-            <button type="button" className="badge warn" title={t('Réviser les lignes à revoir aujourd’hui', 'Review the lines due today')} onClick={go(`/r/${rep.id}/train?mode=review`)}>
-              {t(`${counts.dueLines} à revoir`, `${counts.dueLines} due`)}
-            </button>
-          )}
-          {rep.active && counts && counts.newLines > 0 && (
-            <button type="button" className="badge" title={t('Apprendre les lignes pas encore apprises', 'Learn the lines not learnt yet')} onClick={go(`/r/${rep.id}/train?mode=review`)}>
-              {t(plural(counts.newLines, 'nouvelle', 'nouvelles'), `${counts.newLines} new`)}
-            </button>
-          )}
           {!!missing && (
             <button
               type="button"
@@ -271,14 +229,14 @@ function RepertoireRow({ rep, counts, missing, firstGap }: {
             </button>
           )}
         </div>
-        <div className="toggle" onClick={stop}>
+        <div className="rep-actions" onClick={stop}>
           <Switch
             on={rep.active}
             disabled={toggle.isPending}
             onChange={() => toggle.mutate()}
             label={rep.active ? t(`Mettre ${rep.name} en pause`, `Pause ${rep.name}`) : t(`Reprendre l’entraînement de ${rep.name}`, `Resume training ${rep.name}`)}
           />
-          <span>{rep.active ? t('En entraînement', 'In training') : t('En pause', 'Paused')}</span>
+          <Button size="sm" icon="target" onClick={() => navigate(`/r/${rep.id}/train?mode=test`)}>{t('Se tester', 'Test')}</Button>
         </div>
       </div>
     </div>

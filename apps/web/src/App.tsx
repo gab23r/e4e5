@@ -1,13 +1,13 @@
 import { useIsRestoring, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { api } from './api';
 import { startReviewSync } from './offline/reviews';
 import { InstallPrompt } from './components/InstallPrompt';
 import { useTrainingSummary } from './useTrainingSummary';
 import type { Me } from './api';
-import { Lacunes } from './pages/Lacunes';
 import { Explorer } from './pages/Explorer';
+import { Home } from './pages/Home';
 import { Games, useGamesReport } from './pages/Games';
 import { LichessCallback } from './pages/LichessCallback';
 import { RepertoireEditor } from './pages/RepertoireEditor';
@@ -17,13 +17,13 @@ import { Account } from './pages/Account';
 import { Settings } from './pages/Settings';
 import { Training } from './pages/Training';
 import { t } from './i18n';
-import { Button, Icon, Menu, plural, type IconName } from './ui';
+import { AppbarSlot, Button, Icon, Menu, plural, type IconName } from './ui';
 
-/** The five sections: build, learn, the gaps (games and training), explore, and what the games show. */
+/** The five sections: home, build, learn, explore, and what the games show. */
 const SECTIONS: { to: string; label: string; icon: IconName; active: (path: string) => boolean }[] = [
+  { to: '/', label: t('Accueil', 'Home'), icon: 'home', active: (p) => p === '/' },
   { to: '/repertoires', label: t('Répertoires', 'Repertoires'), icon: 'book', active: (p) => p.startsWith('/repertoires') || (p.startsWith('/r/') && !p.endsWith('/train')) },
   { to: '/train', label: t('Entraîner', 'Train'), icon: 'target', active: (p) => p.endsWith('/train') },
-  { to: '/gaps', label: t('Lacunes', 'Gaps'), icon: 'level', active: (p) => p.startsWith('/gaps') },
   { to: '/explorer', label: t('Explorer', 'Explore'), icon: 'compass', active: (p) => p.startsWith('/explorer') },
   { to: '/games', label: t('Mes parties', 'My games'), icon: 'games', active: (p) => p.startsWith('/games') },
 ];
@@ -78,7 +78,7 @@ function Badge({ n, label }: { n: number; label: string }) {
   );
 }
 
-/** Lacunes: the errors of my games (moves played instead of the prepared ones), not ignored. */
+/** Mes parties: the errors of my games (moves played instead of the prepared ones), not ignored. */
 function GamesBadge() {
   const n = useGamesReport().data?.inbox.errorCount ?? 0;
   return <Badge n={n} label={t(`${plural(n, 'erreur', 'erreurs')} dans vos parties`, `${plural(n, 'error', 'errors')} in your games`)} />;
@@ -96,6 +96,8 @@ export function App() {
   // Badge of the Entraîner tab: lines to review today, plus the new lines still allowed today
   // (one daily limit for all repertoires).
   const summary = useTrainingSummary(me.data);
+  // Where the page header goes on a phone (ui.tsx PageHeader).
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   const active = (summary.data ?? []).filter((s) => s.active);
   const toTrain =
     active.reduce((n, s) => n + s.dueLines, 0) +
@@ -103,7 +105,7 @@ export function App() {
   const badge = (to: string) =>
     to === '/train' ? (
       <Badge n={toTrain} label={t(`${toTrain} lignes à revoir aujourd’hui`, `${toTrain} lines to review today`)} />
-    ) : to === '/gaps' ? (
+    ) : to === '/games' ? (
       <GamesBadge />
     ) : null;
 
@@ -113,10 +115,11 @@ export function App() {
   return (
     <div className="shell">
       <header className="appbar">
-        <Link to="/repertoires" className="brand">
-          <img className="brand-mark" src={`${import.meta.env.BASE_URL}icons/icon.svg`} alt="" />
-          e4e5
+        <Link to="/" className="brand" title="e4e5">
+          <img className="brand-mark" src={`${import.meta.env.BASE_URL}icons/icon.svg`} alt="e4e5" />
         </Link>
+        {/* Phone: the page's header (back, title, actions), instead of the app's name. */}
+        <div className="appbar-slot" ref={setSlot} />
         <nav className="appnav">
           {SECTIONS.map((s) => (
             <Link key={s.to} to={s.to} className={s.active(pathname) ? 'active' : ''}>
@@ -139,9 +142,10 @@ export function App() {
 
       <DatabaseBanner error={me.error} />
 
+      <AppbarSlot.Provider value={slot}>
       <main className="page">
         <Routes>
-          <Route path="/" element={<Redirect to="/repertoires" />} />
+          <Route path="/" element={<Home me={me.data} />} />
           <Route path="/games" element={<Games />} />
           <Route path="/repertoires" element={<Repertoires me={me.data} />} />
           <Route path="/repertoires/new" element={<NewRepertoire me={me.data} />} />
@@ -149,20 +153,21 @@ export function App() {
           <Route path="/r/:id/train" element={<Training me={me.data} />} />
           <Route path="/train" element={<Training me={me.data} />} />
           <Route path="/explorer" element={<Explorer me={me.data} />} />
-          <Route path="/gaps" element={<Lacunes />} />
+          <Route path="/gaps" element={<Redirect to="/games" />} />
           <Route path="/settings" element={<Settings me={me.data} />} />
           <Route path="/account" element={<Account me={me.data} />} />
           <Route path="/lichess-callback" element={<LichessCallback />} />
           {/* Former French addresses. */}
           <Route path="/parties" element={<Redirect to="/games" />} />
-          <Route path="/lacunes" element={<Redirect to="/gaps" />} />
+          <Route path="/lacunes" element={<Redirect to="/games" />} />
           <Route path="/compte" element={<Redirect to="/account" />} />
           <Route path="/repertoires/nouveau" element={<Redirect to="/repertoires/new" />} />
-          <Route path="/bilan/*" element={<Redirect to="/gaps" />} />
-          <Route path="/stats" element={<Redirect to="/gaps" />} />
+          <Route path="/bilan/*" element={<Redirect to="/games" />} />
+          <Route path="/stats" element={<Redirect to="/games" />} />
           <Route path="*" element={<Redirect to="/" />} />
         </Routes>
       </main>
+      </AppbarSlot.Provider>
 
       <InstallPrompt />
 

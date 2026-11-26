@@ -48,6 +48,8 @@ import {
   positionChapters,
   recordAnswer,
   reviewNow,
+  reviewErrors,
+  answersSince,
   saveLine,
   reorderChapters,
   updateChapter,
@@ -190,6 +192,8 @@ export const localApi = {
   cards: () => run(async (db) => listCards(db, LOCAL_USER)),
   review: (id, answer) => run(async (db) => recordAnswer(db, LOCAL_USER, id, answer)),
   reviewNow: (id, fen) => run(async (db) => reviewNow(db, LOCAL_USER, id, fen)),
+  reviewErrors: () => run(async (db) => reviewErrors(db, LOCAL_USER)),
+  answersSince: (since) => run(async (db) => answersSince(db, LOCAL_USER, since)),
   syncState: () => run(async (db) => syncStatus(db, await localUser(db))),
   startSync: (source) => run(async (db) => startSync(db, await localUser(db), source, SOURCES, (e) => console.warn(`${source} sync failed`, e))),
   gamesReport: (days, speeds) =>

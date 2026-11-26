@@ -7,13 +7,14 @@
  * furthest along its line, past that repertoire's trunk (`gapOwner`), or to none.
  *
  * Only the opponent moves forgotten among the replies a line prepares are listed: the end of a
- * line (on my move or on the opponent's, no answer after it) is not a missing move.
+ * line (on my move or on the opponent's, no answer after it) is not a missing move, nor a move
+ * whose reply is obvious at my level or after which I already win (core obviousReply).
  *
  * Runs on statistics at hand only (`storedStats`), so it answers at once. Positions the analysis
  * needs without them can be fetched in the background (`prefetch`, server): the client asks again
  * until nothing is pending, and each pass may reach deeper positions.
  */
-import { findGaps, gapCandidate, LINE_DEPTHS, mergeChapterMoves, Repertoire, rankRepertoires, turnOf, type Color, type StoredStats } from '@e4e5/core';
+import { findGaps, gapCandidate, LINE_DEPTHS, mergeChapterMoves, obviousReply, playUci, Repertoire, rankRepertoires, turnOf, type Color, type StoredStats } from '@e4e5/core';
 import { and, eq, like } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { repertoireGraphs } from './repertoires.js';
@@ -91,7 +92,21 @@ export async function gapsAnalysis(db: Db, userId: string, q: GapsQuery, storedS
     // Not the ends of lines ("no-answer": nothing prepared after an opponent move), nor the
     // missing moves ignored.
     const listed = report.gaps.filter((g) => g.kind === 'missing-reply' && g.prob >= q.cutoff);
-    const shown = listed.filter((g) => !ignoredKeys.has(gapKey(g.fen, g.move!.uci)));
+    // Nor the missing moves not worth preparing, judged on the statistics of the position they
+    // lead to (core obviousReply): players of my level find a good reply by themselves, or I
+    // already win most games there.
+    const after = new Map(listed.map((g) => [g, playUci(g.fen, g.move!.uci)?.toFen]));
+    const afterStats = await storedStats([...new Set([...after.values()].filter((f): f is string => !!f))]);
+    const obvious = new Set(listed.filter((g) => obviousReply(afterStats.get(after.get(g) ?? '')?.data, color) !== null));
+    const kept = listed.filter((g) => !obvious.has(g));
+    const shown = kept.filter((g) => !ignoredKeys.has(gapKey(g.fen, g.move!.uci)));
+    /** Missing moves per repertoire owning them. */
+    const byOwner = (list: typeof listed) =>
+      list.reduce<Record<string, number>>((n, g) => {
+        const owner = rankRepertoires(g, candidates)[0];
+        if (owner?.owns) n[owner.key] = (n[owner.key] ?? 0) + 1;
+        return n;
+      }, {});
     return {
       truncated: report.truncated,
       /** Positions analysed with statistics of another range (exact ones not stored yet). */
@@ -108,12 +123,9 @@ export async function gapsAnalysis(db: Db, userId: string, q: GapsQuery, storedS
        */
       reach: Object.fromEntries([...report.reached].map(([fen, p]) => [fen, Math.round(Math.min(1, p) * 1e6) / 1e6])),
       /** Number of missing moves above the cutoff the user ignored (not in `gaps`), per repertoire owning them. */
-      ignored: listed.reduce<Record<string, number>>((n, g) => {
-        if (!ignoredKeys.has(gapKey(g.fen, g.move!.uci))) return n;
-        const owner = rankRepertoires(g, candidates)[0];
-        if (owner?.owns) n[owner.key] = (n[owner.key] ?? 0) + 1;
-        return n;
-      }, {}),
+      ignored: byOwner(kept.filter((g) => ignoredKeys.has(gapKey(g.fen, g.move!.uci)))),
+      /** Number of missing moves above the cutoff left out as obvious (easy reply, or won), per repertoire owning them. */
+      obvious: byOwner([...obvious]),
       gaps: shown
         .slice(0, MAX_GAPS)
         .map((g) => {

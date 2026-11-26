@@ -7,10 +7,10 @@
  * given, so the same card is computed again.
  */
 import { recallOf, scheduleReview, turnOf, type Grade } from '@e4e5/core';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, or } from 'drizzle-orm';
 import { DataError, type Db } from './db.js';
 import { ownRepertoire } from './repertoires.js';
-import { chapters, moveCards, repMoves, reviewLog } from './schema.js';
+import { chapters, moveCards, repertoires, repMoves, reviewLog } from './schema.js';
 
 type CardRow = typeof moveCards.$inferSelect;
 
@@ -47,6 +47,8 @@ export interface Answer {
   id?: string;
   /** When the answer was given (ms), for answers recorded later (offline). Default: now. */
   reviewedAt?: number;
+  /** Training mode: Réviser or Se tester. */
+  mode?: 'review' | 'test';
 }
 
 /** My moves in a position, in the chapters of a repertoire (first chapter first). */
@@ -65,7 +67,7 @@ async function movesInRepertoire(db: Db, repertoireId: string, fen: string) {
  */
 export async function recordAnswer(db: Db, userId: string, repertoireId: string, answer: Answer) {
   const rep = await ownRepertoire(db, userId, repertoireId);
-  const { fen, uci, grade, id, reviewedAt } = answer;
+  const { fen, uci, grade, id, reviewedAt, mode } = answer;
   const chapter = (await movesInRepertoire(db, rep.id, fen)).find((m) => m.uci === uci)?.chapterId;
   if (turnOf(fen) !== rep.color || !chapter) {
     throw new DataError(400, 'Pas un coup à entraîner dans ce répertoire');
@@ -79,7 +81,7 @@ export async function recordAnswer(db: Db, userId: string, repertoireId: string,
   // Recorded once per id: the same answer recorded again leaves the card as it is.
   const logged = await db
     .insert(reviewLog)
-    .values({ chapterId: chapter, fen, uci, grade, isNew: !existing, reviewedAt: at, clientId: id ?? null })
+    .values({ chapterId: chapter, fen, uci, grade, isNew: !existing, reviewedAt: at, clientId: id ?? null, mode: mode ?? null })
     .onConflictDoNothing({ target: reviewLog.clientId })
     .returning({ id: reviewLog.id });
   if (!logged.length && existing) return publicCard(existing, now);
@@ -118,4 +120,37 @@ export async function reviewNow(db: Db, userId: string, repertoireId: string, fe
     throw new DataError(404, 'Cette position n’est pas encore apprise : entraînez-la d’abord');
   }
   return { ok: true };
+}
+
+/**
+ * My mistakes in Réviser (answers graded "again"), the latest first: the history of the training
+ * page. Answers recorded before the modes were (mode null) count as Réviser.
+ */
+export async function reviewErrors(db: Db, userId: string, limit = 300) {
+  const rows = await db
+    .select({
+      repertoireId: repertoires.id,
+      color: repertoires.color,
+      fen: reviewLog.fen,
+      uci: reviewLog.uci,
+      reviewedAt: reviewLog.reviewedAt,
+    })
+    .from(reviewLog)
+    .innerJoin(chapters, eq(chapters.id, reviewLog.chapterId))
+    .innerJoin(repertoires, eq(repertoires.id, chapters.repertoireId))
+    .where(and(eq(repertoires.userId, userId), eq(reviewLog.grade, 'again'), or(eq(reviewLog.mode, 'review'), isNull(reviewLog.mode))))
+    .orderBy(desc(reviewLog.reviewedAt))
+    .limit(limit);
+  return rows.map((r) => ({ ...r, reviewedAt: r.reviewedAt.getTime() }));
+}
+
+/** My answers since a time (ms), any mode: when, and right or not (the activity of the home page). */
+export async function answersSince(db: Db, userId: string, since: number) {
+  const rows = await db
+    .select({ reviewedAt: reviewLog.reviewedAt, grade: reviewLog.grade })
+    .from(reviewLog)
+    .innerJoin(chapters, eq(chapters.id, reviewLog.chapterId))
+    .innerJoin(repertoires, eq(repertoires.id, chapters.repertoireId))
+    .where(and(eq(repertoires.userId, userId), gte(reviewLog.reviewedAt, new Date(since))));
+  return rows.map((r) => ({ at: r.reviewedAt.getTime(), ok: r.grade !== 'again' }));
 }

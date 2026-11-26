@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findGaps, gapCandidate, gapOwner, rankRepertoires, repertoireTrunk, pgnToMoves, playUci, Repertoire, START_FEN, type ExplorerResponse, type PrepEnd } from '../src/index.js';
+import { findGaps, gapCandidate, obviousReply, gapOwner, rankRepertoires, repertoireTrunk, pgnToMoves, playUci, Repertoire, START_FEN, type ExplorerResponse, type PrepEnd } from '../src/index.js';
 
 const rep = (color: 'white' | 'black', pgn: string) => new Repertoire(color, pgnToMoves(pgn).moves);
 
@@ -175,3 +175,33 @@ describe('gaps across several repertoires of the same colour', () => {
 });
 
 const lineText = (g: { path: { san: string }[]; move?: { san: string } }) => [...g.path.map((m) => m.san), g.move?.san].join(' ');
+
+describe('obvious replies (missing moves not worth preparing)', () => {
+  /** A position where I play Black: [uci, games, white wins, draws, black wins] per move. */
+  const at = (moves: [string, number, number, number][]): ExplorerResponse => {
+    const list = moves.map(([uci, w, d, b]) => ({ uci, san: uci, white: w, draws: d, black: b }));
+    const sum = (k: 'white' | 'draws' | 'black') => list.reduce((n, m) => n + m[k], 0);
+    return { white: sum('white'), draws: sum('draws'), black: sum('black'), moves: list };
+  };
+
+  it('is easy when the most played move scores about as well as the best one played often', () => {
+    // The recapture, played most, scores 50% for Black; the other moves are not better.
+    expect(obviousReply(at([['d8d5', 40, 20, 40], ['g8f6', 15, 5, 10]]), 'black')).toBe('easy');
+  });
+
+  it('is a real missing move when the popular reply scores clearly worse than another one', () => {
+    // Popular: 35% for Black; the less played one: 60%.
+    expect(obviousReply(at([['a7a6', 60, 10, 30], ['c7c5', 15, 10, 25]]), 'black')).toBeNull();
+  });
+
+  it('is not worth preparing when I already win most games there', () => {
+    expect(obviousReply(at([['a7a6', 10, 10, 60], ['h7h6', 5, 5, 30]]), 'black')).toBe('winning');
+    // The same position seen from White: not won (the only move played is still the easy one).
+    expect(obviousReply(at([['a7a6', 10, 10, 60]]), 'white')).toBe('easy');
+  });
+
+  it('cannot judge without enough games', () => {
+    expect(obviousReply(at([['d8d5', 10, 5, 10]]), 'black')).toBeNull();
+    expect(obviousReply(undefined, 'black')).toBeNull();
+  });
+});

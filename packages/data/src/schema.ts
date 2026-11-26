@@ -151,6 +151,8 @@ export const reviewLog = sqliteTable(
     reviewedAt: integer('reviewed_at', { mode: 'timestamp_ms' }).notNull(),
     /** Id given by the device to the answer (answers sent again after a lost connection count once). */
     clientId: text('client_id'),
+    /** Training mode of the answer: Réviser or Se tester (null: before the modes were recorded). */
+    mode: text('mode', { enum: ['review', 'test'] }),
   },
   (t) => [index('review_log_chapter_time').on(t.chapterId, t.reviewedAt), uniqueIndex('review_log_client_id').on(t.clientId)],
 );

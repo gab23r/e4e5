@@ -2,23 +2,25 @@ import { positionFromFen, START_FEN, type Color } from '@e4e5/core';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { api, type Grade, type Me } from '../api';
+import { api, type Grade, type Me, type TrainingMode } from '../api';
 import { explorerParams, useSettings } from '../settings';
 import { useTrainingSummary } from '../useTrainingSummary';
 import { useGaps, useGapReach } from '../useGaps';
-import { Button, PageHeader, Tabs, plural } from '../ui';
+import { Button, PageHeader, plural } from '../ui';
 import { fmt, t } from '../i18n';
 import { lineText } from '../training/common';
 import { PlayMode, type PlayScore } from '../training/PlayMode';
 import { Progress } from '../training/Progress';
 import { ReviewMode } from '../training/ReviewMode';
+import { TrainingHub } from '../training/TrainingHub';
 import { useTrainingSources, type Source } from '../training/useTrainingSources';
 
 type Mode = 'review' | 'play';
 
 /**
  * Training page, for one repertoire (/r/:id/train, optionally ?chapter=<id> for one of its
- * chapters, ?from=<fen> for a subtree) or all of them (/train). Two modes: spaced-repetition review, and playing lines against the app.
+ * chapters, ?from=<fen> for a subtree) or all of them (/train). Without ?mode=, the choice of the
+ * mode (TrainingHub); ?mode=review: spaced-repetition review; ?mode=test: playing lines against the app.
  */
 export function Training({ me }: { me: Me }) {
   const { id } = useParams();
@@ -36,7 +38,7 @@ export function Training({ me }: { me: Me }) {
     }
   }, [fromParam]);
 
-  const all = useQuery({ queryKey: ['repertoires'], queryFn: api.repertoires, enabled: !id });
+  const all = useQuery({ queryKey: ['repertoires'], queryFn: api.repertoires });
   // All repertoires: the active ones only (paused ones are left out).
   const ids = useMemo(() => (id ? [id] : (all.data ?? []).filter((r) => r.active).map((r) => r.id)), [id, all.data]);
   const { newPerDay, speed, range, learnOrder, lineDepth } = useSettings();
@@ -68,37 +70,41 @@ export function Training({ me }: { me: Me }) {
   const ex = explorerParams(me, speed, range);
   // The session is kept while the page is left (explorer, other mode), per scope.
   const sessionKey = `${ids.join()}|${chapter ?? ''}|${from ?? ''}`;
-  // ?mode=test opens "Se tester" (e.g. from the home page when nothing is due), ?mode=review
-  // "Réviser" (e.g. an error of Mes parties); else the last mode used.
-  const [mode, setModeState] = useState<Mode>(() =>
-    params.get('mode') === 'test'
-      ? 'play'
-      : params.get('mode') === 'review'
-        ? 'review'
-        : ((localStorage.getItem('trainingMode') as Mode | null) ?? 'review'),
-  );
+  // No mode: the choice of the mode (hub); ?mode=review / ?mode=test: a session.
+  const modeParam = params.get('mode');
+  const mode: Mode | null = modeParam === 'test' ? 'play' : modeParam === 'review' ? 'review' : null;
+  /** The address of a session of this mode, same repertoires (and chapter, part). */
+  const sessionHref = (m: 'review' | 'test') => {
+    const q = new URLSearchParams(params);
+    q.set('mode', m);
+    return `${id ? `/r/${id}` : ''}/train?${q}`;
+  };
   const setMode = (m: Mode) => {
-    localStorage.setItem('trainingMode', m);
-    setModeState(m);
+    const q = new URLSearchParams(params);
+    q.set('mode', m === 'play' ? 'test' : 'review');
+    setParams(q);
   };
   const [counts, setCounts] = useState({ dueLines: 0, freshLines: 0, reviewed: 0, asked: 0, firstTry: 0 });
   const onCounts = useCallback((c: typeof counts) => setCounts(c), []);
   const [playScore, setPlayScore] = useState<PlayScore>({ lines: 0, moves: 0, asked: 0, clean: 0 });
-  const onReview = (source: Source, fen: string, uci: string, grade: Grade) => review.mutate({ source, fen, uci, grade });
+  const onReview = (as: TrainingMode) => (source: Source, fen: string, uci: string, grade: Grade) => review.mutate({ source, fen, uci, grade, mode: as });
 
-  if (loading || (!id && all.isLoading) || (shortening && gaps.isLoading)) return <p className="muted">{t('Chargement…', 'Loading…')}</p>;
-  if (id && !sources.length) return <p className="error">{t('Impossible de charger le répertoire.', 'Could not load the repertoire.')}</p>;
+  // The hub shows at once (its weak points fill in when the repertoires are loaded); a session waits.
+  if (all.isLoading || (mode && (loading || (shortening && gaps.isLoading)))) return <p className="muted">{t('Chargement…', 'Loading…')}</p>;
+  if (id && (mode ? !sources.length : !all.data?.some((r) => r.id === id))) return <p className="error">{t('Impossible de charger le répertoire.', 'Could not load the repertoire.')}</p>;
 
   const fromPath = from && sources[0] ? sources[0].positions.find((p) => p.fen === from)?.path : undefined;
-  const title = id ? sources[0]!.name : t('Tous les répertoires actifs', 'All active repertoires');
+  const title = id ? (all.data?.find((r) => r.id === id)?.name ?? sources[0]?.name ?? '') : t('Tous les répertoires actifs', 'All active repertoires');
 
   return (
     <div className="training">
       <PageHeader
-        back={id ? `/r/${id}${chapter ? `?chapter=${chapter}` : ''}` : undefined}
-        title={t('Entraînement', 'Training')}
+        back={mode ? `${id ? `/r/${id}` : ''}/train${chapter ? `?chapter=${chapter}` : ''}` : id ? `/r/${id}${chapter ? `?chapter=${chapter}` : ''}` : undefined}
+        title={mode === 'review' ? t('Réviser', 'Review') : mode === 'play' ? t('Se tester', 'Test yourself') : t('Entraînement', 'Training')}
         subtitle={
-          mode === 'review'
+          !mode
+            ? title
+            : mode === 'review'
             ? `${title} · ${t(`${plural(counts.dueLines, 'ligne', 'lignes')} à revoir`, `${plural(counts.dueLines, 'line', 'lines')} due`)} · ${t(plural(counts.freshLines, 'nouvelle', 'nouvelles'), `${fmt(counts.freshLines)} new`)}${
                 counts.reviewed > 0
                   ? ` · ${t(plural(counts.reviewed, 'réponse', 'réponses'), plural(counts.reviewed, 'answer', 'answers'))}${counts.asked > 0 ? firstTryText(counts.firstTry, counts.asked) : ''}`
@@ -111,17 +117,10 @@ export function Training({ me }: { me: Me }) {
               }`
         }
       />
-      <div style={{ marginBottom: 12 }}>
-        <Tabs
-          block
-          value={mode}
-          onChange={setMode}
-          tabs={[
-            { id: 'review', label: t('Réviser', 'Review') },
-            { id: 'play', label: t('Se tester', 'Test yourself') },
-          ]}
-        />
-      </div>
+      {!mode ? (
+        <TrainingHub id={id} reps={all.data ?? []} summary={summary.data} sources={sources} sessionHref={sessionHref} />
+      ) : (
+      <>
       {from && (
         <p className="muted from">
           {t(
@@ -147,7 +146,7 @@ export function Training({ me }: { me: Me }) {
           sources={sources}
           newPerDay={newPerDay}
           noNewLimit={!!from}
-          onReview={onReview}
+          onReview={onReview('review')}
           onCounts={onCounts}
           onTest={() => setMode('play')}
           reachOf={reachOf}
@@ -163,13 +162,14 @@ export function Training({ me }: { me: Me }) {
           root={from ?? sources[0]?.root ?? START_FEN}
           speeds={ex.speeds}
           ratings={ex.ratings}
-          onReview={onReview}
+          onReview={onReview('test')}
           onLearn={() => setMode('review')}
           onScore={setPlayScore}
           sessionKey={`play|${sessionKey}`}
         />
       )}
-
+      </>
+      )}
     </div>
   );
 }

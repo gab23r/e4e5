@@ -1,7 +1,9 @@
 import type { Color } from '@e4e5/core';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type GamesReport, type RepertoireSummary, type Results } from '../api';
+import { GameErrorCard } from '../components/GameErrorCard';
 import { GameSyncInline, useGameSync } from '../components/GameSync';
 import { fmt, t } from '../i18n';
 import { SPEED_NAMES, useSettings } from '../settings';
@@ -11,6 +13,7 @@ const PERIOD: Record<number, string> = t(
   { 30: '30 derniers jours', 90: '3 derniers mois', 365: '12 derniers mois', 0: 'toutes les parties' },
   { 30: 'last 30 days', 90: 'last 3 months', 365: 'last 12 months', 0: 'all games' },
 );
+const PAGE = 20;
 const pct = (x: number) => t(`${Math.round(100 * x)} %`, `${Math.round(100 * x)}%`);
 const score = (r: Results) => {
   const n = r.win + r.draw + r.loss;
@@ -19,7 +22,7 @@ const score = (r: Results) => {
 
 /**
  * The games compared with the repertoires (period and speeds of the settings). Shared by this
- * page, the Lacunes page (my errors) and its badge (same query, computed once).
+ * page (my errors in it) and the badge of its tab (same query, computed once).
  */
 export function useGamesReport() {
   const { gamesDays, gamesSpeeds } = useSettings();
@@ -34,13 +37,18 @@ export function useGamesReport() {
   });
 }
 
-/** Mes parties: score per repertoire, and the first moves outside the repertoires (my errors are in Lacunes). */
+/** Mes parties: my errors to fix (moves played instead of the prepared ones), score per repertoire, and the first moves outside the repertoires. */
 export function Games() {
   const { gamesDays, gamesSpeeds } = useSettings();
   const reps = useQuery({ queryKey: ['repertoires'], queryFn: api.repertoires });
   const report = useGamesReport();
   const byId = new Map((reps.data ?? []).map((r) => [r.id, r]));
   const r = report.data;
+  const qc = useQueryClient();
+  const restore = useMutation({ mutationFn: api.restoreInbox, onSuccess: () => qc.invalidateQueries({ queryKey: ['games-report'] }) });
+  const [shown, setShown] = useState(PAGE);
+  const [notice, setNotice] = useState<string | null>(null);
+  const errors = r?.inbox.errors ?? [];
 
   return (
     <div className="games-page stack">
@@ -52,6 +60,7 @@ export function Games() {
             {PERIOD[gamesDays] ?? t(`${gamesDays} jours`, `${gamesDays} days`)} · {gamesSpeeds.map((s) => SPEED_NAMES[s] ?? s).join(', ')}
           </Link>
         }
+        menu={[{ label: t('Réafficher les erreurs ignorées', 'Show the ignored mistakes again'), onClick: () => restore.mutate() }]}
       />
       <GameSyncInline />
 
@@ -68,22 +77,27 @@ export function Games() {
 
       {r && r.games > 0 && (
         <>
-          <p className="muted small-text" style={{ margin: 0 }}>
-            {r.inbox.errorCount > 0 ? (
-              t(
-                <>
-                  Vos écarts au répertoire ({r.inbox.errorCount}) sont dans les <Link to="/gaps">Lacunes</Link>, avec les positions fragiles de
-                  l’entraînement.
-                </>,
-                <>
-                  Your deviations from the repertoire ({r.inbox.errorCount}) are in <Link to="/gaps">Gaps</Link>, with the fragile positions of
-                  your training.
-                </>,
-              )
-            ) : (
-              t('Aucun écart à votre répertoire dans ces parties.', 'No deviation from your repertoire in these games.')
+          <section className="stack">
+            <h3>{t(`À corriger (${errors.length})`, `To fix (${errors.length})`)}</h3>
+            <p className="muted small-text" style={{ margin: 0 }}>
+              {errors.length
+                ? t('Vous avez joué autre chose que votre coup préparé, du plus fréquent au moins fréquent.', 'You played something other than your prepared move, most frequent first.')
+                : t('Aucun écart à votre répertoire dans ces parties.', 'No deviation from your repertoire in these games.')}
+            </p>
+            {notice && (
+              <p className="notice success">
+                {notice} <Link to="/train">{t('Entraîner', 'Train')}</Link>
+              </p>
             )}
-          </p>
+            {errors.slice(0, shown).map((item) => (
+              <GameErrorCard key={item.key} item={item} rep={byId.get(item.repertoireId)} onDone={setNotice} />
+            ))}
+            {errors.length > shown && (
+              <Button variant="ghost" onClick={() => setShown(shown + PAGE)}>
+                {t('Voir plus', 'Show more')} ({errors.length - shown})
+              </Button>
+            )}
+          </section>
           <RepertoireStats report={r} reps={byId} />
         </>
       )}

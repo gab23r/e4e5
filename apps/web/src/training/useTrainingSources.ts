@@ -1,7 +1,7 @@
 import { positionReview, START_FEN, type Color, type Repertoire, type RepMove, type TrainingPosition } from '@e4e5/core';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { api, type Grade, type ReviewCard } from '../api';
+import { api, type Grade, type ReviewCard, type TrainingMode } from '../api';
 import { cardsQuery, recordReview } from '../offline/reviews';
 import { chapterRoot } from '../chapters';
 import { useSettings } from '../settings';
@@ -128,8 +128,8 @@ export function useTrainingSources(ids: string[], from: string | null, shorten?:
 
   /** Records an answer: scheduled on the device at once, then recorded in the database. */
   const review = {
-    mutate: ({ source, fen, uci, grade }: { source: Source; fen: string; uci: string; grade: Grade }) =>
-      recordReview(qc, source.cardOf(fen, uci), { repertoireId: source.id, fen, uci, grade }),
+    mutate: ({ source, fen, uci, grade, mode }: { source: Source; fen: string; uci: string; grade: Grade; mode: TrainingMode }) =>
+      recordReview(qc, source.cardOf(fen, uci), { repertoireId: source.id, fen, uci, grade, mode }),
   };
 
   return { sources, loading, review };

@@ -2,18 +2,16 @@ import { pathTo, playUci, Repertoire, START_FEN, totalGames, turnOf, type Played
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DrawShape } from 'chessground/draw';
 import type { Key } from 'chessground/types';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type Gap, type Me, type RepertoireDetail, type StoredMove } from '../api';
 import { chapterForLine, chapterForPosition, chapterRoot, playLine } from '../chapters';
 import { ChapterBar } from '../components/ChapterBar';
 import { StudySyncDialog } from '../components/StudySyncDialog';
 import { PushDialog } from '../components/PushDialog';
-import { PausedZoneHeader } from '../components/PausedZoneHeader';
-import { useMoveDrag, type DropTarget } from '../components/useMoveDrag';
-import { useLongPress } from '../components/useLongPress';
+import type { DropTarget } from '../components/useMoveDrag';
+import { MoveChips } from '../components/MoveChips';
 import { MoveActionsDialog } from '../components/MoveActionsDialog';
-import { useFlip } from '../components/useFlip';
 import { OUTLINE_EXTRA, type ArrowKind } from '../components/arrows';
 import { EngineLines, EvalBar } from '../components/EnginePanel';
 import { useEngine } from '../engine/useEngine';
@@ -36,7 +34,7 @@ export function RepertoireEditor({ me }: { me: Me }) {
   const { id = '' } = useParams();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { speed, range, gapCutoff } = useSettings();
+  const { speed, range } = useSettings();
   const gapReport = useGaps(me);
   const { data, isLoading, error } = useQuery({ queryKey: ['repertoire', id], queryFn: () => api.repertoire(id) });
   /**
@@ -251,12 +249,8 @@ export function RepertoireEditor({ me }: { me: Me }) {
       arrange.mutate([{ m: active[1], patch: { isMain: true } }]);
     }
   };
-  const { listRef, drag, handle } = useMoveDrag(dropMove);
-  // A long press on a move (right click with a mouse): its actions (pause, delete).
-  const longPress = useLongPress();
+  // A long press on a move chip (right click with a mouse): its actions (pause, delete).
   const [acting, setActing] = useState<StoredMove | null>(null);
-  // The moves slide to their new place (paused: down into the paused zone; main: up).
-  useFlip(listRef);
   const setComment = useMutation({
     mutationFn: ({ m, comment }: { m: StoredMove; comment: string }) => api.updateMove(chapterId, m.id, { comment: comment || null }),
     onSuccess: refresh,
@@ -465,6 +459,9 @@ export function RepertoireEditor({ me }: { me: Me }) {
   // where it has replies, or no answer after one of its opponent moves.
   const inChapter = (g: Gap) => activeChapter.reach.has(g.fen) && (!g.move || activeChapter.rep.movesAt(g.fen).length > 0);
   const holes = colorReport?.gaps.filter((g) => g.repertoireId === id && inChapter(g) && !isIgnored(g) && !covered(g));
+  // Only those of the position on the board (its orange arrows) are listed.
+  const holesHere = holes?.filter((g) => g.fen === fen) ?? [];
+  const ignoredCount = (colorReport?.ignored?.[id] ?? 0) + (colorReport?.gaps.filter((g) => g.repertoireId === id && isIgnored(g)).length ?? 0);
   if (error || !data) return <p className="error">{t('Impossible de charger le répertoire.', 'Could not load the repertoire.')}</p>;
 
   const last = line[ply - 1];
@@ -479,8 +476,10 @@ export function RepertoireEditor({ me }: { me: Me }) {
         `${data.color === 'white' ? 'Blancs' : 'Noirs'} · ${plural(data.chapters.length, 'chapitre', 'chapitres')}${data.active ? '' : ' · en pause'}`,
         `${data.color === 'white' ? 'White' : 'Black'} · ${plural(data.chapters.length, 'chapter', 'chapters')}${data.active ? '' : ' · paused'}`,
       )}
-      actions={<Button variant="primary" icon="play" to={`/r/${id}/train`}>{t('S’entraîner', 'Train')}</Button>}
       menu={[
+        ...(ignoredCount > 0
+          ? [{ label: t(`Rétablir ${plural(ignoredCount, 'coup manquant ignoré', 'coups manquants ignorés')}`, `Restore ${plural(ignoredCount, 'ignored missing move', 'ignored missing moves')}`), onClick: () => restoreGaps.mutate() }]
+          : []),
         { label: t('Organiser les chapitres', 'Organise the chapters'), onClick: () => setOrganizing(true) },
         ...(data.lichessStudyId
           ? [
@@ -534,18 +533,22 @@ export function RepertoireEditor({ me }: { me: Me }) {
           onMovedAway={(to, c) => navigate(`/r/${to}?chapter=${c}`)}
           organizing={organizing}
           onOrganize={setOrganizing}
+          trainTo={`/r/${id}/train${data.chapters.length > 1 && chapterId ? `?chapter=${chapterId}` : ''}`}
         />
         <div className="board-row">
           {/* Always there (empty when the engine is off): toggling it does not resize the board. */}
           <EvalBar line={engineOn ? engine.lines[0] : undefined} orientation={data.color} off={!engineOn} />
           <Board fen={fen} orientation={data.color} lastMove={last?.uci} lastMoveNags={lastStored?.nags} shapes={shapes} onMove={play} />
         </div>
-        <div className="nav">
-          <button onClick={restart} title={t('Début : efface la ligne (Origine)', 'Start: clears the line (Home)')}>⏮</button>
-          <button onClick={() => goTo(ply - 1)} title={t('Reculer (←)', 'Back (←)')}>◀</button>
-          <button onClick={forward} title={t('Avancer (→)', 'Forward (→)')}>▶</button>
-          <button onClick={() => goTo(line.length)} title={t('Fin de la ligne (Fin)', 'End of the line (End)')}>⏭</button>
+        {/* Back: ◀ (or a click on a move of the line, ←). Forward: the green button (or →). */}
+        <div className="nav editor-nav">
           <AnalysisToggle enabled={analysisOn} onToggle={toggleAnalysis} />
+          <button type="button" className="play-back" onClick={() => goTo(ply - 1)} disabled={ply === 0} title={t('Coup précédent (←)', 'Previous move (←)')} aria-label={t('Coup précédent', 'Previous move')}>
+            <Icon name="back" size={24} />
+          </button>
+          <button type="button" className="play-next" onClick={forward} disabled={!options[selected]} title={t('Coup suivant (→)', 'Next move (→)')} aria-label={t('Coup suivant', 'Next move')}>
+            <Icon name="chevron" size={26} />
+          </button>
         </div>
         {/* The two tools in swipeable cards, one in view at a time (ToolCards). */}
         {analysisOn && (
@@ -638,9 +641,10 @@ export function RepertoireEditor({ me }: { me: Me }) {
               variant="ghost"
               icon="target"
               title={t('S’entraîner à partir d’ici', 'Train from here')}
-              to={`/r/${id}/train?${new URLSearchParams({ ...(data.chapters.length > 1 ? { chapter: chapterId } : {}), from: fen })}`}
+              to={`/r/${id}/train?${new URLSearchParams({ mode: 'review', ...(data.chapters.length > 1 ? { chapter: chapterId } : {}), from: fen })}`}
             />
           )}
+          <Button size="sm" variant="ghost" icon="close" title={t('Revenir au début (efface la ligne)', 'Back to the start (clears the line)')} onClick={restart} />
           </div>
           )}
 
@@ -681,88 +685,24 @@ export function RepertoireEditor({ me }: { me: Me }) {
               )}
             </>
           )}
-          <ul className={`rep-moves next-moves ${drag ? 'dragging-list' : ''}`} ref={listRef}>
-            {options[0] && !rep.has(options[0].fromFen, options[0].uci) && (
-              <li className="next-move clickable draft-move" onClick={() => play(options[0]!.uci)} title={t('Suite de votre ligne, pas encore enregistrée', 'Continuation of your line, not saved yet')}>
-                <div className="move-main">
-                  <button className="link unsaved san">
-                    <span className="move-num">{moveNumber}</span>
-                    {options[0].san}
-                  </button>
-                </div>
-                <div className="row nowrap move-actions" onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    icon="close"
-                    title={t('Annuler la suite non enregistrée à partir d’ici', 'Discard the unsaved continuation from here')}
-                    onClick={() => setLine(line.slice(0, ply))}
-                  />
-                </div>
-              </li>
-            )}
-            {here.map((m, i) => {
-              const zone = m.paused ? 'paused' : 'active';
-              // Drop indicator: a line before the row the dragged move would land before.
-              const others = here.filter((x) => (x.paused ? 'paused' : 'active') === zone && x.id !== drag?.id);
-              const rank = others.indexOf(m);
-              const dropBefore = !!drag && drag.id !== m.id && drag.zone === 'active' && zone === 'active' && rank === drag.index;
-              const dropAfter = !!drag && drag.id !== m.id && drag.zone === 'active' && zone === 'active' && rank === others.length - 1 && drag.index === others.length;
-              return (
-                <Fragment key={m.id}>
-                  {/* The paused zone: always while dragging, so a move can be dropped there. */}
-                  {(i === here.findIndex((x) => x.paused)) && <PausedZoneHeader target={drag?.zone === 'paused'} dropAbove={drag?.zone === 'active' && !here.some((x) => !x.paused && x.id !== drag.id)} />}
-                  <li
-                    data-zone={zone}
-                    data-id={m.id}
-                    data-flip={m.id}
-                    className={[
-                      'next-move',
-                      'clickable',
-                      m.paused ? 'paused' : '',
-                      drag?.id === m.id ? 'dragging' : '',
-                      dropBefore ? 'drop-before' : '',
-                      dropAfter ? 'drop-after' : '',
-                    ].filter(Boolean).join(' ')}
-                    style={drag?.id === m.id ? { transform: `translateY(${drag.dy}px)` } : undefined}
-                    onClick={() => play(m.uci)}
-                    title={t('Appui long : mettre en pause, supprimer', 'Long press: pause, delete')}
-                    {...longPress(() => setActing(m))}
-                  >
-                    <div className="move-main">
-                      <button className="link san">
-                        <span className="move-num">{moveNumber}</span>
-                        <San san={m.san} nags={m.nags} />
-                      </button>
-                      {m.isMain && !m.paused && here.filter((x) => !x.paused).length > 1 && <span className="badge">{t('principal', 'main')}</span>}
-                      {m.comment && <div className="comment move-comment" title={m.comment}>{m.comment}</div>}
-                    </div>
-                    <span className="grip" title={t('Glisser : en haut, coup principal ; en bas, en pause', 'Drag: to the top, main move; to the bottom, paused')} {...handle(m.id)}>
-                      <Icon name="grip" size={16} />
-                    </span>
-                  </li>
-                </Fragment>
-              );
-            })}
-            {drag && !here.some((m) => m.paused) && <PausedZoneHeader target={drag.zone === 'paused'} dropAbove={drag.zone === 'active' && !here.some((x) => x.id !== drag.id)} />}
-          </ul>
-          {options.length > 0 && (
-            <p className="muted small-text keys">
-              {t(<><kbd>→</kbd> jouer · <kbd>←</kbd> reculer</>, <><kbd>→</kbd> play · <kbd>←</kbd> back</>)}
-            </p>
+          {(here.length > 0 || (options[0] && !rep.has(options[0].fromFen, options[0].uci))) && (
+            <MoveChips
+              moves={here}
+              draft={options[0] && !rep.has(options[0].fromFen, options[0].uci) ? options[0] : null}
+              moveNumber={moveNumber}
+              onPlay={play}
+              onDrop={dropMove}
+              onActions={setActing}
+              onDiscardDraft={() => setLine(line.slice(0, ply))}
+            />
           )}
         </section>
         )}
 
 
         <Suggestions
-          gaps={holes}
-          fen={fen}
-          cutoff={gapCutoff}
-          pending={!!colorReport?.pending}
-          ignored={(colorReport?.ignored?.[id] ?? 0) + (colorReport?.gaps.filter((g) => g.repertoireId === id && isIgnored(g)).length ?? 0)}
+          gaps={holesHere}
           onIgnore={(g) => ignoreGap.mutate(g)}
-          onRestore={() => restoreGaps.mutate()}
           onOpen={(ucis) => {
             setGapMode(true);
             openLineOf(ucis, data);

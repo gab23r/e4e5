@@ -1,6 +1,18 @@
 import { translateError } from './i18n';
 import type { Color, ExplorerResponse, FsrsCard, Grade, RepertoireSummaryCounts, PgnChapter, RepMove, SuggestedMove } from '@e4e5/core';
 
+/** Training mode of an answer: Réviser or Se tester. */
+export type TrainingMode = 'review' | 'test';
+
+/** A mistake in Réviser: the move expected in a position of a repertoire. */
+export interface ReviewError {
+  repertoireId: string;
+  color: Color;
+  fen: string;
+  uci: string | null;
+  reviewedAt: number;
+}
+
 export interface StatsMeta {
   speeds: string[];
   ratings: number[];
@@ -217,6 +229,11 @@ export interface GapReport {
   gaps: Gap[];
   /** Number of missing moves ignored (left out of `gaps`), per repertoire owning them. */
   ignored: Record<string, number>;
+  /**
+   * Number of missing moves left out as not worth preparing (core obviousReply: the reply most
+   * played at my level is about as good as the best one, or I already win), per repertoire.
+   */
+  obvious: Record<string, number>;
 }
 export interface GapsResponse {
   white: GapReport | null;
@@ -393,7 +410,11 @@ export interface Api {
   pushToLichess: (repertoireId: string, visibility: 'private' | 'unlisted' | 'public') => Promise<PushResult>;
   cards: () => Promise<ReviewCard[]>;
   /** An answer: `id` makes it count once, `reviewedAt` is when it was given. */
-  review: (id: string, answer: { fen: string; uci: string; grade: Grade; id: string; reviewedAt: number }) => Promise<ReviewCard>;
+  review: (id: string, answer: { fen: string; uci: string; grade: Grade; id: string; reviewedAt: number; mode?: TrainingMode }) => Promise<ReviewCard>;
+  /** My mistakes in Réviser, the latest first (history of the training page). */
+  reviewErrors: () => Promise<ReviewError[]>;
+  /** My answers since a time (ms): when, right or not (activity of the home page). */
+  answersSince: (since: number) => Promise<{ at: number; ok: boolean }[]>;
   gaps: (speeds: string[], ratings: number[], cutoff: number) => Promise<GapsResponse>;
   /** Ignores a missing move (opponent move `uci` at `fen`): no longer listed. */
   ignoreGap: (fen: string, uci: string) => Promise<{ ok: true }>;

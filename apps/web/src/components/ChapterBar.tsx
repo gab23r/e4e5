@@ -7,7 +7,7 @@ import type { Color } from '@e4e5/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type ChapterInfo, type StoredMove } from '../api';
 import { t } from '../i18n';
-import { Button, plural } from '../ui';
+import { Button } from '../ui';
 import { ChaptersDialog } from './ChaptersDialog';
 
 export function ChapterBar({
@@ -21,6 +21,7 @@ export function ChapterBar({
   onMovedAway,
   organizing,
   onOrganize,
+  trainTo,
 }: {
   repertoireId: string;
   color: Color;
@@ -35,6 +36,8 @@ export function ChapterBar({
   /** The dialog organising the chapters is open (asked from the page menu). */
   organizing: boolean;
   onOrganize: (open: boolean) => void;
+  /** The training of the chapter open (the whole repertoire when it has one chapter). */
+  trainTo?: string;
 }) {
   const qc = useQueryClient();
   const count = new Map<string, number>();
@@ -54,7 +57,7 @@ export function ChapterBar({
     },
   });
   const optionLabel = (c: ChapterInfo, i: number) =>
-    `${i + 1}. ${c.name} · ${plural(count.get(c.id) ?? 0, t('coup', 'move'), t('coups', 'moves'))}${c.active ? '' : t(' · en pause', ' · paused')}`;
+    `${i + 1}. ${c.name}${c.active ? '' : t(' · en pause', ' · paused')}`;
 
   return (
     <div className="chapter-bar">
@@ -74,6 +77,11 @@ export function ChapterBar({
       )}
       {!chapters.length && (
         <Button size="sm" variant="primary" icon="plus" onClick={() => onOrganize(true)}>{t('Nouveau chapitre', 'New chapter')}</Button>
+      )}
+      {chapters.length > 0 && trainTo && (
+        <Button icon="play" to={trainTo} title={chapters.length > 1 ? t('S’entraîner sur ce chapitre', 'Train this chapter') : t('S’entraîner', 'Train')}>
+          {t('S’entraîner', 'Train')}
+        </Button>
       )}
       {change.error && <p className="error small-text">{change.error.message}</p>}
       {organizing && (
