@@ -207,6 +207,16 @@ export function Explorer({ me }: { me: Me }) {
     [nextMoves],
   );
   const qc = useQueryClient();
+  // The positions one move ahead (next moves of my repertoires, next move of the line) are fetched
+  // in advance: going forward (→) shows their cards at once, without the page jumping while loading.
+  useEffect(() => {
+    const ahead = new Set(nextMoves.map((g) => playUci(fen, g.uci)?.toFen).filter((f): f is string => !!f));
+    if (line[ply]) ahead.add(line[ply].toFen);
+    for (const f of ahead) {
+      void qc.prefetchQuery({ queryKey: ['explorer-reps', f], queryFn: () => api.chapterMovesAt(f), staleTime: 60_000 });
+      void qc.prefetchQuery({ queryKey: ['explorer-pos-reps', f], queryFn: () => api.positionChapters(f), staleTime: 60_000 });
+    }
+  }, [fen, nextMoves, line, ply, qc]);
   /**
    * Main and paused moves, set by dragging the next moves (as in the editor), in every repertoire
    * playing the move. Shown at once (rules of the server), then reloaded.

@@ -1,7 +1,7 @@
 /** Small UI kit: icons, buttons, page header, menus, tabs, empty states. Styles: styles.css. */
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { t } from './i18n';
 
 // --- Icons (24×24, stroke) ------------------------------------------------------------------------
@@ -28,6 +28,10 @@ const paths = {
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-4.35-4.35',
   /** A board under a magnifier: the analysis (Lichess at my level + Stockfish). */
   analysis: 'M3 3h11v11H3zM3 8.5h11M8.5 3v11M16 20a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM18.9 18.9 22 22',
+  /** Give up (Abandon). */
+  flag: 'M5 21V4M5 4h11l-2 4 2 4H5',
+  /** A light bulb (Indice). */
+  bulb: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z',
   engine: 'M7 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM10 10h4v4h-4zM9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3',
 } as const;
 export type IconName = keyof typeof paths;
@@ -155,16 +159,34 @@ export function usePhone() {
   );
 }
 
-export function PageHeader(props: { title: ReactNode; subtitle?: ReactNode; back?: string; actions?: ReactNode; menu?: MenuItem[] }) {
+type PageHeaderProps = {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  /** Where the back button leads; with `backInHistory`, only when there is no previous screen in the app. */
+  back?: string;
+  /** The back button returns to the previous screen (as the browser's back), whatever it was. */
+  backInHistory?: boolean;
+  actions?: ReactNode;
+  menu?: MenuItem[];
+};
+
+export function PageHeader(props: PageHeaderProps) {
   const slot = useContext(AppbarSlot);
   const phone = usePhone();
   return phone && slot ? createPortal(<PageHeaderContent {...props} />, slot) : <PageHeaderContent {...props} />;
 }
 
-function PageHeaderContent({ title, subtitle, back, actions, menu }: { title: ReactNode; subtitle?: ReactNode; back?: string; actions?: ReactNode; menu?: MenuItem[] }) {
+function PageHeaderContent({ title, subtitle, back, backInHistory, actions, menu }: PageHeaderProps) {
+  const navigate = useNavigate();
+  // 'default': this screen was opened first (link, reload), there is nothing to go back to in the app.
+  const hasPrevious = useLocation().key !== 'default';
   return (
     <header className="page-header">
-      {back && <Button variant="ghost" icon="back" to={back} title={t('Retour', 'Back')} className="back" />}
+      {backInHistory && hasPrevious ? (
+        <Button variant="ghost" icon="back" onClick={() => navigate(-1)} title={t('Retour', 'Back')} className="back" />
+      ) : (
+        back && <Button variant="ghost" icon="back" to={back} title={t('Retour', 'Back')} className="back" />
+      )}
       <div className="titles">
         <h2>{title}</h2>
         {subtitle && <div className="subtitle">{subtitle}</div>}

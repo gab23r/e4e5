@@ -3,7 +3,7 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { api, type Grade, type ReviewCard, type TrainingMode } from '../api';
 import { cardsQuery, recordReview } from '../offline/reviews';
-import { chapterRoot } from '../chapters';
+import { chapterGraph, chapterRoot } from '../chapters';
 import { useSettings } from '../settings';
 import { graphOf, keptOf, movesOf, positionsFrom, positionsOf } from './graphCache';
 
@@ -40,6 +40,13 @@ export interface Source {
   positionCard: (fen: string) => PositionCard | undefined;
   /** My moves of a position put on pause (left out of the training, still in the repertoire). */
   pausedAt: (fen: string) => RepMove[];
+  /** The repertoire's own name (`name` may add the chapter trained). */
+  repertoireName: string;
+  /**
+   * The chapter one of my moves is in (the chapter trained, else the first active one having it,
+   * else the first having moves in that position); undefined for a repertoire of one chapter.
+   */
+  chapterOf: (fen: string, uci: string) => { id: string; name: string } | undefined;
 }
 
 const cardKey = (fen: string, uci: string) => `${fen} ${uci}`;
@@ -84,7 +91,17 @@ export function useTrainingSources(ids: string[], from: string | null, shorten?:
         const paused = new Map<string, RepMove[]>();
         for (const m of movesOf(data, info?.id)) if (m.paused) paused.set(m.fromFen, [...(paused.get(m.fromFen) ?? []), m]);
         const name = info && info.name !== data.name ? `${data.name} › ${info.name}` : data.name;
-        return [{ id, data, name, root, rep, paused, positions: kept ? positions.filter((p) => kept.has(p.fen)) : positions }];
+        // The graph of each chapter, built when first asked (only to name the chapter of a question).
+        let graphs: { chapter: (typeof data.chapters)[number]; graph: Repertoire }[] | null = null;
+        const chapterOf = (fen: string, uci: string) => {
+          if (info) return info;
+          if (data.chapters.length < 2) return undefined;
+          graphs ??= [...data.chapters]
+            .sort((a, b) => Number(b.active) - Number(a.active))
+            .map((chapter) => ({ chapter, graph: chapterGraph(data.color, data.moves, chapter.id) }));
+          return (graphs.find((g) => g.graph.has(fen, uci)) ?? graphs.find((g) => g.graph.movesAt(fen).length > 0))?.chapter;
+        };
+        return [{ id, data, name, root, rep, paused, chapterOf, positions: kept ? positions.filter((p) => kept.has(p.fen)) : positions }];
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ids.join(), version, from, shorten, chapter, mainMoveOnly],
@@ -93,7 +110,7 @@ export function useTrainingSources(ids: string[], from: string | null, shorten?:
   // The review state, after every answer: only small functions reading the cards.
   const sources = useMemo<Source[]>(
     () =>
-      trained.map(({ id, data, name, root, rep, paused, positions }) => {
+      trained.map(({ id, data, name, root, rep, paused, chapterOf, positions }) => {
         const cardOf = (fen: string, uci: string) => cards.get(cardKey(fen, uci));
         const times = (fen: string) => (uci: string) => {
           const c = cardOf(fen, uci);
@@ -102,6 +119,8 @@ export function useTrainingSources(ids: string[], from: string | null, shorten?:
         return {
           id,
           name,
+          repertoireName: data.name,
+          chapterOf,
           root,
           color: data.color,
           rep,

@@ -328,10 +328,18 @@ export function RepertoireEditor({ me }: { me: Me }) {
   /** Number of the next move, as in the line ("2." for White, "2…" for Black). */
   const moveNumber = ply % 2 === 0 ? `${ply / 2 + 1}.` : `${(ply + 1) / 2}…`;
 
+  /** The chapter after the open one: → (the green button) opens it at the end of a line. */
+  const chapters = data?.chapters ?? [];
+  const nextChapter = chapters[chapters.findIndex((c) => c.id === chapterId) + 1];
   const forward = useCallback(() => {
     const move = options[selected];
-    if (move) play(move.uci);
-  }, [options, selected, play]);
+    if (move) return play(move.uci);
+    if (!nextChapter) return;
+    // Its unsaved moves would be lost: asked first (as for the cross of the line).
+    if (line.some((m) => !rep.has(m.fromFen, m.uci)) && !confirm(t('Abandonner les coups non enregistrés de cette ligne ?', 'Drop the unsaved moves of this line?'))) return;
+    selectChapter(nextChapter.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [options, selected, play, nextChapter, line, rep]);
 
   /** Drops the unsaved moves: back to the longest saved part of the line. */
   const discard = () => {
@@ -471,6 +479,7 @@ export function RepertoireEditor({ me }: { me: Me }) {
     <>
     <PageHeader
       back="/repertoires"
+      backInHistory
       title={data.name}
       subtitle={t(
         `${data.color === 'white' ? 'Blancs' : 'Noirs'} · ${plural(data.chapters.length, 'chapitre', 'chapitres')}${data.active ? '' : ' · en pause'}`,
@@ -546,9 +555,17 @@ export function RepertoireEditor({ me }: { me: Me }) {
           <button type="button" className="play-back" onClick={() => goTo(ply - 1)} disabled={ply === 0} title={t('Coup précédent (←)', 'Previous move (←)')} aria-label={t('Coup précédent', 'Previous move')}>
             <Icon name="back" size={24} />
           </button>
-          <button type="button" className="play-next" onClick={forward} disabled={!options[selected]} title={t('Coup suivant (→)', 'Next move (→)')} aria-label={t('Coup suivant', 'Next move')}>
-            <Icon name="chevron" size={26} />
-          </button>
+          {options[selected] || !nextChapter ? (
+            <button type="button" className="play-next" onClick={forward} disabled={!options[selected]} title={t('Coup suivant (→)', 'Next move (→)')} aria-label={t('Coup suivant', 'Next move')}>
+              <Icon name="chevron" size={26} />
+            </button>
+          ) : (
+            // End of the line: the next chapter.
+            <button type="button" className="play-next next-chapter" onClick={forward} title={t(`Chapitre suivant : ${nextChapter.name} (→)`, `Next chapter: ${nextChapter.name} (→)`)}>
+              <span className="next-chapter-label">{t('Chapitre suivant', 'Next chapter')}</span>
+              <Icon name="chevron" size={22} />
+            </button>
+          )}
         </div>
         {/* The analysis: the Lichess moves at my level with Stockfish's evaluation (Éval column). */}
         {analysisOn && (

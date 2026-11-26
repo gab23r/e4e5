@@ -87,7 +87,7 @@ function GamesBadge() {
 
 export function App() {
   const qc = useQueryClient();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const restoring = useIsRestoring();
   // Asked again every 30 s while the database cannot be opened (e4e5 open in another tab).
   const me = useQuery({ queryKey: ['me'], queryFn: api.me, retry: false, refetchInterval: (q) => (q.state.error ? 30_000 : false) });
@@ -99,6 +99,10 @@ export function App() {
   const summary = useTrainingSummary(me.data);
   // Home page: my series of days in a row, in the app bar.
   const onHome = pathname === '/';
+  // Repertoire editor and play mode: no tab bar on a phone, left with the back button.
+  const editing = /^\/r\/[^/]+\/?$/.test(pathname);
+  const playing = pathname.endsWith('/train') && new URLSearchParams(search).get('mode') === 'test';
+  const noTabbar = editing || playing;
   const streak = streakOf(useAnswers(onHome && !!me.data).answers.data);
   // Where the page header goes on a phone (ui.tsx PageHeader).
   const [slot, setSlot] = useState<HTMLElement | null>(null);
@@ -117,7 +121,7 @@ export function App() {
   if (!me.data) return <Unreachable retry={() => void me.refetch()} retrying={me.isFetching} error={me.error} />;
 
   return (
-    <div className="shell">
+    <div className={noTabbar ? 'shell no-tabbar' : 'shell'}>
       <header className="appbar">
         <Link to="/" className="brand" title="e4e5">
           <img className="brand-mark" src={`${import.meta.env.BASE_URL}icons/icon.svg`} alt="e4e5" />
@@ -180,6 +184,7 @@ export function App() {
 
       <InstallPrompt />
 
+      {!noTabbar && (
       <nav className="tabbar">
         {SECTIONS.map((s) => (
           <Link key={s.to} to={s.to} className={s.active(pathname) ? 'active' : ''}>
@@ -189,6 +194,7 @@ export function App() {
           </Link>
         ))}
       </nav>
+      )}
     </div>
   );
 }

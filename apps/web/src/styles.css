@@ -123,6 +123,8 @@ button.link:hover { background: var(--surface-3); }
 .tabbar a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); font-size: 0.72rem; font-weight: 600; }
 .tabbar a:hover { text-decoration: none; }
 .tabbar a.active { color: var(--accent); }
+/* Repertoire editor: no tab bar (left with the back button). */
+.shell.no-tabbar { --tabbar-h: 0px; }
 @media (min-width: 900px) {
   .appnav { display: flex; gap: 4px; margin-left: 24px; }
   .appnav a { color: var(--text-2); font-weight: 600; padding: 7px 12px; border-radius: var(--radius-sm); }
@@ -466,8 +468,25 @@ button.badge:focus-visible { outline: 2px solid currentColor; outline-offset: 1p
 .answer-timer { flex: 1; height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
 .answer-timer > div { height: 100%; background: var(--accent); transform-origin: left; animation: answer-timer linear forwards; }
 @keyframes answer-timer { from { transform: scaleX(1); } 80% { background: var(--accent); } to { transform: scaleX(0); background: #e5534b; } }
-.drill-actions { display: flex; justify-content: center; gap: 6px; margin-top: 8px; padding: 0 var(--page-pad); }
-.drill-actions button { flex: 1; max-width: 140px; }
+/* Réviser: the repertoire › chapter of the question above the board, a link to it in the editor. */
+.board-rep { display: block; padding: 0 var(--page-pad) 2px; font-weight: 700; font-size: 0.92rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board-rep:hover { color: var(--accent); text-decoration: none; }
+.board-rep-chapter { color: var(--text-2); font-weight: 600; }
+/* Jouer: Indice, Abandon, Répertoire, an icon over its label (no box). */
+.play-actions { display: flex; justify-content: space-around; gap: 4px; margin-top: 6px; padding: 0 var(--page-pad); }
+.play-actions button { flex: 1; max-width: 120px; display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 0; padding: 8px 4px; border-radius: var(--radius); background: none; border: 0; color: var(--text-2); font-size: 0.82rem; font-weight: 700; }
+.play-actions button:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
+.play-actions button:disabled { opacity: 0.4; }
+/* Against the bot (training/PlayMode.tsx): on desktop the actions stay under the board. On a phone
+   the screen is filled: the board comes down, Indice / Abandon / Répertoire at the bottom. */
+.play-screen > .play-actions { grid-column: 1; }
+@media (max-width: 899px) {
+  .page:has(.play-screen) { display: flex; flex-direction: column; }
+  .training:has(.play-screen) { flex: 1; display: flex; flex-direction: column; }
+  .play-screen { flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+  .play-screen > .editor-board { margin-top: auto; }
+  .play-screen > .play-actions { margin-top: auto; padding-top: 12px; }
+}
 .legend { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; font-size: 0.8rem; margin: 8px 0 0; padding: 0 var(--page-pad); }
 .editor-side .panel:first-child { margin-top: 0; }
 .editor-side .page-header { margin-bottom: 4px; }
@@ -985,18 +1004,31 @@ table.explorer tr.move-detail table.games { font-size: 0.85rem; }
 .bot-avatar { flex: none; border-radius: 50%; object-fit: cover; background: #fff; box-shadow: 0 0 0 2px var(--surface-3); }
 .mode-hint:has(.bot-avatar) { display: flex; align-items: center; gap: 10px; }
 .opponent-elo { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); font-size: 0.82rem; font-weight: 700; }
-/* "Défier …": the opponent of my level, in its colour, one button. */
-.play-card { display: flex; align-items: center; gap: 16px; padding: 16px 18px; border-radius: var(--radius-lg); color: var(--text); border: 1px solid color-mix(in srgb, var(--bot) 45%, var(--border)); background: color-mix(in srgb, var(--bot) 16%, var(--surface)); transition: transform 0.12s, box-shadow 0.12s; }
-.play-card:hover { text-decoration: none; transform: translateY(-1px); box-shadow: 0 6px 20px color-mix(in srgb, var(--bot) 30%, transparent); }
+/* "Défier …": the opponent (of my level or chosen), in its colour, one button; a tap on it opens the others. */
+.play-card { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px; border-radius: var(--radius-lg); color: var(--text); border: 1px solid color-mix(in srgb, var(--bot) 45%, var(--border)); background: color-mix(in srgb, var(--bot) 16%, var(--surface)); }
+.play-card-main { display: flex; align-items: center; gap: 16px; }
+.play-card-who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 16px; padding: 0; min-height: 0; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.play-card-who:hover .play-card-switch { color: var(--text); background: color-mix(in srgb, var(--bot) 35%, var(--surface-3)); }
 .play-card .bot-avatar { box-shadow: 0 0 0 3px color-mix(in srgb, var(--bot) 80%, #fff); }
 .play-card-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .play-card-name { font-size: 1.25rem; display: flex; align-items: center; }
 .play-card-sub { color: var(--text-2); font-size: 0.9rem; }
 .play-card .opponent-elo { background: color-mix(in srgb, var(--bot) 40%, var(--surface-3)); color: var(--text); }
+.play-card-switch { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-left: 6px; border-radius: 50%; color: var(--text-2); background: color-mix(in srgb, var(--bot) 20%, var(--surface-3)); transform: rotate(90deg); transition: transform 0.15s, background 0.12s; }
+.play-card-switch.open { transform: rotate(-90deg); }
 .play-card-cta { flex: none; gap: 8px; font-weight: 700; box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent); }
-.play-card:hover .play-card-cta { background: var(--accent-hover); border-color: var(--accent-hover); }
+.play-card-cta:hover { text-decoration: none; }
+/* The opponents to choose from: a row of faces, scrolled sideways on phones. */
+.bot-picker { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 6px; scrollbar-width: none; scroll-snap-type: x proximity; }
+.bot-option { flex: none; width: 78px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; min-height: 0; border-radius: var(--radius); border: 1px solid transparent; background: color-mix(in srgb, #000 18%, transparent); color: var(--text); cursor: pointer; scroll-snap-align: start; font: inherit; }
+.bot-option:hover { background: color-mix(in srgb, #000 30%, transparent); }
+.bot-option.on { border-color: var(--accent); background: var(--accent-soft); }
+.bot-option .bot-avatar { box-shadow: 0 0 0 2px color-mix(in srgb, var(--bot) 80%, #fff); }
+.bot-option-name { font-size: 0.82rem; font-weight: 700; }
+.bot-option-elo { font-size: 0.74rem; color: var(--text-2); line-height: 1.1; text-align: center; }
+.bot-auto-mark { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 1.2rem; color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent); }
 @media (max-width: 520px) {
-  .play-card { flex-wrap: wrap; }
+  .play-card-main { flex-wrap: wrap; }
   .play-card-cta { width: 100%; justify-content: center; }
 }
 .mode-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
@@ -1126,3 +1158,61 @@ a.card.home-gap { display: flex; flex-direction: column; gap: 22px; align-items:
 .card, .panel, .rep-list, .mode-card, .home-today, .home-rep, .home-welcome-hero, .play-card, .level-lines, .engine-lines { box-shadow: var(--card-shadow); }
 /* Home page: the series of days in a row, in the app bar next to the account. */
 .appbar-streak { font-weight: 800; font-size: 1.05rem; color: #f5a524; margin-right: 6px; white-space: nowrap; }
+/* Against the bot (training/PlayMode.tsx): its face above the board, top left, and a speech bubble
+   pointing at it; at the end of a line its comment and the button to replay. */
+.bot-talk { display: flex; align-items: center; gap: 12px; padding: 4px var(--page-pad) 10px; min-height: 76px; }
+.bot-talk .bot-avatar { flex: none; border-radius: 50%; box-shadow: 0 0 0 3px color-mix(in srgb, var(--surface-3) 80%, #fff); }
+.bot-bubble {
+  position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  padding: 10px 14px; border-radius: 14px; background: #fff; color: #1d1d1f; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  animation: bot-talk-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* The tail of the bubble, towards the face. */
+.bot-bubble::before { content: ''; position: absolute; left: -7px; top: 50%; width: 14px; height: 14px; background: inherit; transform: translateY(-50%) rotate(45deg); border-radius: 2px; }
+.bot-bubble p { position: relative; margin: 0; font-size: 0.95rem; line-height: 1.4; font-weight: 600; }
+.bot-bubble button { position: relative; align-self: stretch; }
+.bot-bubble.won { box-shadow: 0 0 0 2px #3fb950, 0 4px 14px rgba(0, 0, 0, 0.3); }
+.bot-bubble.lost { box-shadow: 0 0 0 2px #e5534b, 0 4px 14px rgba(0, 0, 0, 0.3); }
+@keyframes bot-talk-in { from { opacity: 0; transform: translateX(-6px) scale(0.97); } to { opacity: 1; transform: none; } }
+.editor-board.won .board-frame { animation: line-glow 0.9s ease-out; border-radius: 4px; }
+/* Lost (a move missed twice): the board flashes red, the arrows of the answer on it. */
+.editor-board.lost .board-frame { animation: line-lost 0.9s ease-out; border-radius: 4px; }
+@keyframes line-lost {
+  0% { box-shadow: 0 0 0 0 rgba(229, 83, 75, 0); }
+  25% { box-shadow: 0 0 0 3px rgba(229, 83, 75, 0.9), 0 0 28px 4px rgba(229, 83, 75, 0.45); }
+  100% { box-shadow: 0 0 0 0 rgba(229, 83, 75, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .bot-bubble, .editor-board.won .board-frame, .editor-board.lost .board-frame { animation: none; } }
+@media (min-width: 900px) { .bot-talk { padding-left: 0; padding-right: 0; } }
+/* Editor, end of a line: the green button opens the next chapter. */
+.editor-nav .play-next.next-chapter { display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 700; }
+.editor-nav .next-chapter-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Home: the progress that keeps going up (moves learnt, this week, the curve), then the button. */
+.home-progress { display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); }
+.home-progress-head { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; row-gap: 2px; }
+.home-progress-label { flex-basis: 100%; color: var(--text-2); font-size: 0.9rem; }
+.home-progress-value { font-size: 3.25rem; font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; }
+.home-progress-delta { color: var(--rep); font-weight: 600; }
+.home-progress-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.home-progress-stats { display: flex; gap: 16px; flex-wrap: wrap; color: var(--text-2); font-size: 0.9rem; }
+.home-progress-stat strong { color: var(--text); font-size: 1.1rem; }
+.home-progress-stat.on strong { color: #f5a524; }
+.progress-chart { margin: 0; }
+.progress-plot { position: relative; }
+.progress-chart svg { display: block; width: 100%; height: 96px; overflow: visible; touch-action: pan-y; cursor: crosshair; }
+.progress-area { fill: var(--rep); opacity: 0.14; }
+.progress-line { fill: none; stroke: var(--rep); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.progress-cross { stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 3 3; }
+.progress-dot { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--rep); box-shadow: 0 0 0 2px var(--surface); pointer-events: none; }
+.progress-tip { color: var(--text); white-space: nowrap; }
+.progress-axis { display: flex; justify-content: space-between; margin-top: 4px; }
+/* Read by screen readers only (e.g. the figures of a chart). */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* Home: "Tout afficher" beside a section title (plain text, a little greyer than the title). */
+.home-head-more { background: none; border: none; padding: 0; min-height: 0; font: inherit; font-size: 0.95rem; font-weight: 400; color: var(--text-2); cursor: pointer; }
+.home-head-more:hover, .home-head-more:focus, .home-head-more:active { color: var(--text); background: none; box-shadow: none; }
+/* Every item of a section, as compact rows (small thumbnail beside the text). */
+.home-list { display: flex; flex-direction: column; gap: 10px; }
+a.card.home-gap.compact { flex-direction: row; align-items: center; gap: 14px; padding: 10px 12px; }
+a.card.home-gap.compact .mini-board { width: 76px; align-self: auto; }
+a.card.home-gap.compact .home-gap-text { font-size: 0.92rem; line-height: 1.4; }

@@ -64,6 +64,9 @@ interface Settings {
   /** Review: seconds to answer a position already learnt (0: no timer). */
   answerSeconds: number;
   setAnswerSeconds: (n: number) => void;
+  /** The opponent of "Se tester" chosen (its name), null: the one of my level (opponent.ts). */
+  bot: string | null;
+  setBot: (name: string | null) => void;
 }
 
 /** A depth of the lines (share of the games) as a percentage: "0,5 %" / "0.5%". */
@@ -118,9 +121,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [sound, setSound] = usePersisted(SOUND_KEY, true);
   const [haptics, setHaptics] = usePersisted(HAPTICS_KEY, true);
   const [answerSeconds, setAnswerSeconds] = usePersisted('answerSeconds', 15);
+  const [bot, setBot] = usePersisted<string | null>('bot', null);
   return (
     <Ctx.Provider
-      value={{ speed, setSpeed, range, setRange, newPerDay, setNewPerDay, lineDepth, setLineDepth, gapCutoff: gapCutoffFor(lineDepth), gamesDays, setGamesDays, gamesSpeeds, setGamesSpeeds, learnOrder, setLearnOrder, mainMoveOnly, setMainMoveOnly, sound, setSound, haptics, setHaptics, answerSeconds, setAnswerSeconds }}
+      value={{ speed, setSpeed, range, setRange, newPerDay, setNewPerDay, lineDepth, setLineDepth, gapCutoff: gapCutoffFor(lineDepth), gamesDays, setGamesDays, gamesSpeeds, setGamesSpeeds, learnOrder, setLearnOrder, mainMoveOnly, setMainMoveOnly, sound, setSound, haptics, setHaptics, answerSeconds, setAnswerSeconds, bot, setBot }}
     >
       {children}
     </Ctx.Provider>

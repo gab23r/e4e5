@@ -13,7 +13,6 @@ import { PlayMode, type PlayScore } from '../training/PlayMode';
 import { Progress } from '../training/Progress';
 import { ReviewMode } from '../training/ReviewMode';
 import { useOpponent } from '../opponent';
-import { BotAvatar } from '../components/BotAvatar';
 import { useTrainingSources, type Source } from '../training/useTrainingSources';
 
 type Mode = 'review' | 'play';
@@ -120,15 +119,11 @@ export function Training({ me }: { me: Me }) {
       )}
       {shortening && <ShortenNotice gaps={gaps} colors={[...new Set(sources.map((s) => s.color))]} />}
 
-      <p className="muted small-text mode-hint">
-        {mode === 'play' && <BotAvatar name={opponent.name} size={36} />}
-        {mode === 'review'
-          ? t('Les positions à revoir aujourd’hui, au bon moment pour les retenir.', 'The positions due today, at the right time to remember them.')
-          : t(
-              `Sur ce que vous avez appris, sans aide, comme en partie : ${opponent.name} joue les coups les plus fréquents des joueurs de votre niveau.`,
-              `On what you have learnt, without help, as in a game: ${opponent.name} plays the most frequent moves of players of your level.`,
-            )}
-      </p>
+      {mode === 'review' && (
+        <p className="muted small-text mode-hint">
+          {t('Les positions à revoir aujourd’hui, au bon moment pour les retenir.', 'The positions due today, at the right time to remember them.')}
+        </p>
+      )}
 
       {mode === 'review' ? (
         <ReviewMode
@@ -150,10 +145,17 @@ export function Training({ me }: { me: Me }) {
           sources={sources}
           root={from ?? sources[0]?.root ?? START_FEN}
           speeds={ex.speeds}
-          ratings={ex.ratings}
+          ratings={opponent.ratings}
           onReview={onReview('test')}
           onScore={setPlayScore}
           sessionKey={`play|${sessionKey}`}
+          bot={{
+            name: opponent.name,
+            intro: t(
+              `Sur ce que tu as appris, sans aide, comme en partie : je joue les coups les plus fréquents des joueurs ${opponent.chosen ? `autour de ${opponent.elo}` : 'de ton niveau'}. Deux erreurs sur un coup et je gagne !`,
+              `On what you have learnt, without help, as in a game: I play the most frequent moves of players ${opponent.chosen ? `around ${opponent.elo}` : 'of your level'}. Two mistakes on a move and I win!`,
+            ),
+          }}
         />
       )}
     </div>

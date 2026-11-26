@@ -9,6 +9,7 @@ import { api } from '../api';
 import { useLayoutEffect, useRef } from 'react';
 import { San } from '../components/Nag';
 import { t } from '../i18n';
+import { Icon } from '../ui';
 
 /** Dots of the trail shown left of the swipe bar, the latest ones (older ones: "+N"). */
 const MAX_DOTS = 10;
@@ -191,28 +192,24 @@ export function LineDone({ text }: { text: string }) {
   );
 }
 
-/** One button: first the piece to move (Indice), then the solution; and the Explorer. */
+/** One button: first the piece to move (Indice), then the solution. */
 export function DrillActions({
   hinted,
   disabled,
   solutionTitle,
   onHint,
-  onExplorer,
 }: {
   /** The piece is shown (or the answer): the button gives the solution. */
   hinted: boolean;
   disabled: boolean;
   solutionTitle: string;
   onHint: () => void;
-  onExplorer: () => void;
 }) {
   return (
-    <div className="drill-actions">
-      <button onClick={onHint} disabled={disabled} title={hinted ? solutionTitle : t('Montrer la pièce à jouer', 'Show the piece to move')}>
-        {hinted ? t('🏳 Solution', '🏳 Solution') : t('💡 Indice', '💡 Hint')}
-      </button>
-      <button onClick={onExplorer} title={t('Ouvrir cette position dans l’Explorer', 'Open this position in Explore')}>
-        🧭 {t('Explorer', 'Explore')}
+    <div className="play-actions">
+      <button type="button" onClick={onHint} disabled={disabled} title={hinted ? solutionTitle : t('Montrer la pièce à jouer', 'Show the piece to move')}>
+        <Icon name={hinted ? 'flag' : 'bulb'} size={24} />
+        {hinted ? t('Solution', 'Solution') : t('Indice', 'Hint')}
       </button>
     </div>
   );

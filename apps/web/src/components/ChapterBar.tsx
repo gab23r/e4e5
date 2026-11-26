@@ -79,7 +79,7 @@ export function ChapterBar({
         <Button size="sm" variant="primary" icon="plus" onClick={() => onOrganize(true)}>{t('Nouveau chapitre', 'New chapter')}</Button>
       )}
       {chapters.length > 0 && trainTo && (
-        <Button icon="play" to={trainTo} title={chapters.length > 1 ? t('S’entraîner sur ce chapitre', 'Train this chapter') : t('S’entraîner', 'Train')}>
+        <Button icon="target" to={trainTo} title={chapters.length > 1 ? t('S’entraîner sur ce chapitre', 'Train this chapter') : t('S’entraîner', 'Train')}>
           {t('S’entraîner', 'Train')}
         </Button>
       )}

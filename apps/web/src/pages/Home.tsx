@@ -11,13 +11,16 @@ import { BotAvatar, botColor } from '../components/BotAvatar';
 import { MiniBoard } from '../components/MiniBoard';
 import { San } from '../components/Nag';
 import { SwipeRow } from '../components/SwipeRow';
+import { ProgressChart } from '../components/ProgressChart';
+import { cardsQuery } from '../offline/reviews';
 import { chapterForPosition } from '../chapters';
 import { playUci, START_FEN } from '@e4e5/core';
 import { moveText } from '../chessText';
 import { fmt, lang, t } from '../i18n';
 import { useTrainingSummary } from '../useTrainingSummary';
 import { useGaps } from '../useGaps';
-import { useOpponent } from '../opponent';
+import { BOTS, useOpponent } from '../opponent';
+import { useSettings } from '../settings';
 import { Button, Icon, plural } from '../ui';
 import { DAY, dayOf, useAnswers, WEEKS } from '../activity';
 
@@ -31,7 +34,6 @@ export function Home({ me }: { me: Me }) {
   if (reps.isLoading) return <p className="muted">{t('Chargement…', 'Loading…')}</p>;
   if (!reps.data?.length) return <Welcome />;
 
-  const name = me.lichess?.username ?? me.chesscom?.username;
   const active = (summary.data ?? []).filter((s) => s.active);
   const due = active.reduce((n, s) => n + s.dueLines, 0);
   const fresh = Math.min(summary.data?.[0]?.remainingNewLines ?? 0, active.reduce((n, s) => n + s.availableLines, 0));
@@ -40,7 +42,7 @@ export function Home({ me }: { me: Me }) {
 
   return (
     <div className="home stack">
-      <Today name={name} due={due} fresh={fresh} answers={answers.data} loading={!summary.data} />
+      <Progress due={due} fresh={fresh} answers={answers.data} loading={!summary.data} />
       <PlayCard me={me} />
       <ToReview reps={reps.data} summary={summary.data} />
       <div className="home-grid">
@@ -68,65 +70,131 @@ export function todo(due: number, fresh: number, form: 'long' | 'short'): string
   return long ? `${parts.join(t(' et ', ' and '))}${t(' aujourd’hui.', ' today.')}` : parts.join(' · ');
 }
 
-/** The day: hello, what is left today, the button to go on (the series of days is in the app bar). */
-function Today({ name, due, fresh, answers, loading }: { name?: string; due: number; fresh: number; answers?: { at: number; ok: boolean }[]; loading: boolean }) {
+/** Days in a row with at least one answer, up to today (or yesterday, today not played yet). */
+function streakOf(answers: { at: number }[]): number {
+  const days = new Set(answers.map((a) => dayOf(a.at)));
+  let day = dayOf(Date.now());
+  if (!days.has(day)) day = dayOf(day - DAY / 2);
+  let n = 0;
+  while (days.has(day)) {
+    n++;
+    day = dayOf(day - DAY / 2);
+  }
+  return n;
+}
+
+/**
+ * The progress that keeps going up: the moves learnt (one at least answered once), what this
+ * week added, their curve over the last weeks; the days in a row and today's answers; the button
+ * to go on training.
+ */
+function Progress({ due, fresh, answers, loading }: { due: number; fresh: number; answers?: { at: number; ok: boolean }[]; loading: boolean }) {
+  const cards = useQuery(cardsQuery);
   const today = dayOf(Date.now());
+  const learnt = (cards.data ?? []).map((c) => Date.parse(c.createdAt)).filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+  const total = learnt.length;
+  const thisWeek = learnt.filter((x) => x >= today - 6 * DAY).length;
   const doneToday = (answers ?? []).filter((a) => a.at >= today).length;
+  const streak = streakOf(answers ?? []);
   const left = due + fresh;
-  // Still counting: the review (most likely something to do).
   const review = loading || left > 0;
-  const hour = new Date().getHours();
-  const hello = hour < 5 || hour >= 18 ? t('Bonsoir', 'Good evening') : t('Bonjour', 'Hello');
+  // The curve: moves learnt at the end of each of the last 56 days.
+  const points = useMemo(() => {
+    const out: { day: number; value: number }[] = [];
+    let i = 0;
+    for (let d = today - 55 * DAY; d <= today; d = dayOf(d + DAY * 1.5)) {
+      while (i < learnt.length && learnt[i]! < d + DAY) i++;
+      out.push({ day: d, value: i });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards.data, today]);
   return (
-    <section className="home-today">
-      <div className="home-today-text">
-        <h2>
-          {hello}
-          {name ? ` ${name}` : ''}
-        </h2>
-        <p className="muted">
-          {loading
-            ? t('Calcul de votre journée…', 'Working out your day…')
-            : left > 0
-              ? todo(due, fresh, 'long')
-              : t('Tout est à jour : jouez une partie sur vos lignes.', 'All up to date: play a game on your lines.')}
-        </p>
-        <div className="row">
-          <Button variant="primary" icon="play" to={review ? '/train' : '/train?mode=test'}>
-            {review ? t('Continuer l’entraînement', 'Continue training') : t('Jouer une partie', 'Play a game')}
-          </Button>
-        </div>
+    <section className="home-progress">
+      <div className="home-progress-head">
+        <span className="home-progress-label">{t('Coups appris', 'Moves learnt')}</span>
+        <span className="home-progress-value">{cards.data ? fmt(total) : '…'}</span>
+        {thisWeek > 0 && <span className="home-progress-delta">{t(`+${fmt(thisWeek)} cette semaine`, `+${fmt(thisWeek)} this week`)}</span>}
       </div>
-      <div className="home-stats">
-        <div className="home-stat">
-          <span className="home-stat-value">{fmt(doneToday)}</span>
-          <span className="muted small-text">{t('réponses aujourd’hui', 'answers today')}</span>
+      {cards.data && total > 0 && <ProgressChart points={points} label={t('Coups appris', 'Moves learnt')} />}
+      <div className="home-progress-foot">
+        <div className="home-progress-stats">
+          <span className={`home-progress-stat ${streak > 0 ? 'on' : ''}`}>
+            <strong>{fmt(streak)}</strong> {t(streak > 1 ? 'jours d’affilée' : 'jour d’affilée', streak === 1 ? 'day in a row' : 'days in a row')}
+          </span>
+          <span className="home-progress-stat">
+            <strong>{fmt(doneToday)}</strong> {t(doneToday > 1 ? 'réponses aujourd’hui' : 'réponse aujourd’hui', doneToday === 1 ? 'answer today' : 'answers today')}
+          </span>
         </div>
+        {/* The target trains (review), the triangle plays a game against a bot. */}
+        <Button variant="primary" icon={review ? 'target' : 'play'} to={review ? '/train' : '/train?mode=test'}>
+          {review ? (left > 0 ? t(`S’entraîner · ${plural(left, 'ligne', 'lignes')}`, `Train · ${plural(left, 'line', 'lines')}`) : t('S’entraîner', 'Train')) : t('Jouer une partie', 'Play a game')}
+        </Button>
       </div>
     </section>
   );
 }
 
 /**
- * "Se tester" as a game: against a fictional player of my level (the level of the opening
- * statistics), who plays the most frequent moves there, on what I have learnt, without help.
+ * "Se tester" as a game: against a fictional player (of my level, or the one chosen), who plays
+ * the most frequent moves of its level, on what I have learnt, without help. A tap on the player
+ * opens the others, to choose one (or the one of my level again).
  */
 function PlayCard({ me }: { me: Me }) {
-  const { name, elo } = useOpponent(me);
+  const { name, elo, chosen } = useOpponent(me);
+  const { setBot } = useSettings();
+  const [picking, setPicking] = useState(false);
+  const pick = (bot: string | null) => {
+    setBot(bot);
+    setPicking(false);
+  };
   return (
-    <Link to="/train?mode=test" className="play-card" style={{ '--bot': botColor(name) } as CSSProperties}>
-      <BotAvatar name={name} size={72} />
-      <span className="play-card-text">
-        <strong className="play-card-name">
-          {name} <span className="opponent-elo">{elo}</span>
-        </strong>
-        <span className="play-card-sub">{t('Vos lignes, sans aide', 'Your lines, no help')}</span>
-      </span>
-      <span className="btn btn-primary btn-lg play-card-cta">
-        <Icon name="play" size={18} />
-        {t(`Défier ${name}`, `Challenge ${name}`)}
-      </span>
-    </Link>
+    <div className="play-card" style={{ '--bot': botColor(name) } as CSSProperties}>
+      <div className="play-card-main">
+        <button type="button" className="play-card-who" onClick={() => setPicking(!picking)} aria-expanded={picking} title={t('Changer d’adversaire', 'Change opponent')}>
+          <BotAvatar name={name} size={72} />
+          <span className="play-card-text">
+            <strong className="play-card-name">
+              {name} <span className="opponent-elo">{elo}</span>
+              <span className={`play-card-switch ${picking ? 'open' : ''}`}><Icon name="chevron" size={16} /></span>
+            </strong>
+            <span className="play-card-sub">{chosen ? t('Choisi par vous', 'Your pick') : t('À votre niveau', 'At your level')}</span>
+          </span>
+        </button>
+        <Link to="/train?mode=test" className="btn btn-primary btn-lg play-card-cta">
+          <Icon name="play" size={18} />
+          {t(`Défier ${name}`, `Challenge ${name}`)}
+        </Link>
+      </div>
+      {picking && (
+        <div
+          className="bot-picker"
+          // Opened: the current opponent in view (the row scrolls sideways on phones).
+          ref={(el) => el?.querySelector('.bot-option.on')?.scrollIntoView({ inline: 'center', block: 'nearest' })}
+          role="listbox" aria-label={t('Adversaires', 'Opponents')}>
+          <button type="button" role="option" aria-selected={!chosen} className={`bot-option auto ${!chosen ? 'on' : ''}`} onClick={() => pick(null)}>
+            <span className="bot-auto-mark">A</span>
+            <span className="bot-option-name">{t('Auto', 'Auto')}</span>
+            <span className="bot-option-elo">{t('votre niveau', 'your level')}</span>
+          </button>
+          {BOTS.map((b) => (
+            <button
+              key={b.name}
+              type="button"
+              role="option"
+              aria-selected={chosen && b.name === name}
+              className={`bot-option ${chosen && b.name === name ? 'on' : ''}`}
+              style={{ '--bot': botColor(b.name) } as CSSProperties}
+              onClick={() => pick(b.name)}
+            >
+              <BotAvatar name={b.name} size={52} />
+              <span className="bot-option-name">{b.name}</span>
+              <span className="bot-option-elo">{b.elo}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -318,10 +386,33 @@ function ErrorDeck({ reps }: { reps: Map<string, RepertoireSummary> }) {
     const ignored = new Set(ignoredSaved());
     return (training.data ?? []).filter((e) => reps.get(e.repertoireId)?.active !== false && !ignored.has(errorId(e)));
   }, [training.data, reps]);
+  // "Tout afficher": every mistake as a list, instead of one card at a time.
+  const [all, setAll] = useState(false);
   if (!training.data) return null;
+  const toggle = errors.length > 1 && (
+    <button type="button" className="home-head-more" onClick={() => setAll(!all)}>
+      {all ? t('Réduire', 'Show less') : t('Tout afficher', 'Show all')}
+    </button>
+  );
+  if (all && errors.length > 1) {
+    return (
+      <section className="stack">
+        <div className="home-head">
+          <h3>{t('Revoir vos erreurs', 'Review your mistakes')}</h3>
+          {toggle}
+        </div>
+        <div className="home-list">
+          {errors.map((e) => (
+            <TrainingErrorCard key={errorId(e)} error={e} rep={reps.get(e.repertoireId)} compact />
+          ))}
+        </div>
+      </section>
+    );
+  }
   return (
     <Deck
       title={t('Revoir vos erreurs', 'Review your mistakes')}
+      aside={toggle}
       items={errors}
       id={errorId}
       dismiss={{ label: t('C’est compris', 'Got it'), side: 'left' }}
@@ -351,7 +442,7 @@ const whenText = (at: number) => {
  * A mistake of my training: the position, the moves I played instead (orange) and the move
  * expected (green); a tap trains it again.
  */
-function TrainingErrorCard({ error, rep }: { error: ReviewError; rep: RepertoireSummary | undefined }) {
+function TrainingErrorCard({ error, rep, compact }: { error: ReviewError; rep: RepertoireSummary | undefined; compact?: boolean }) {
   const to = `/r/${error.repertoireId}/train?${new URLSearchParams({ mode: 'review', from: error.fen })}`;
   const move = error.uci ? playUci(error.fen, error.uci) : null;
   const wrong = [...new Set(error.played)].filter((u) => u !== error.uci).flatMap((u) => {
@@ -360,7 +451,7 @@ function TrainingErrorCard({ error, rep }: { error: ReviewError; rep: Repertoire
   });
   const mode = error.mode === 'test' ? t('en test', 'in a test') : t('en révision', 'in review');
   return (
-    <Link to={to} className="card home-gap" draggable={false}>
+    <Link to={to} className={`card home-gap ${compact ? 'compact' : ''}`} draggable={false}>
       <MiniBoard
         fen={error.fen}
         orientation={error.color}

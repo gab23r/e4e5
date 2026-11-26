@@ -2,7 +2,7 @@ import { groupLines, lineStarts, type Repertoire, type RepMove, type TrainingPos
 import type { Key } from 'chessground/types';
 import type { DrawShape } from 'chessground/draw';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import type { Grade } from '../api';
 import { Board } from '../components/Board';
 import { San } from '../components/Nag';
@@ -723,7 +723,6 @@ function Drill({
   /** The line ends with the move just played (shown until the next line). */
   lineDone: boolean;
 }) {
-  const navigate = useNavigate();
   const { source, target, expected, isNew, lead } = question;
   const plies = target.path.length;
   const fresh = () => ({
@@ -842,12 +841,20 @@ function Drill({
     return [];
   }, [revealed, hinted, asking, expected, alternative, isNew, round]);
 
-  const toExplorer = () =>
-    navigate(`/explorer?${new URLSearchParams({ line: moves.map((m) => m.uci).join(','), ...(source.color === 'black' ? { color: 'black' } : {}) })}`);
+  const chapter = useMemo(() => source.chapterOf(target.fen, expected.uci), [source, target.fen, expected.uci]);
 
   return (
-    <div className="editor">
+    <div className="editor play-screen">
       <div className="editor-board">
+        {/* The repertoire and chapter of the question: a link to this position in the editor. */}
+        <Link
+          to={`/r/${source.id}?${new URLSearchParams({ ...(chapter ? { chapter: chapter.id } : {}), line: moves.map((m) => m.uci).join(',') })}`}
+          className="board-rep"
+          title={t('Ouvrir cette position dans votre répertoire', 'Open this position in your repertoire')}
+        >
+          {source.repertoireName}
+          {chapter && chapter.name !== source.repertoireName && <span className="board-rep-chapter"> › {chapter.name}</span>}
+        </Link>
         <OpeningName ucis={moves.map((m) => m.uci)} />
         <Board
           fen={last?.toFen ?? source.root}
@@ -896,14 +903,14 @@ function Drill({
           onOpen={onOpen}
           onTraining={onTraining}
         />
-        <DrillActions
-          hinted={hinted || revealed}
-          disabled={!asking}
-          solutionTitle={t('Jouer le coup attendu (compté comme aidé), puis la ligne continue', 'Play the expected move (counted as helped), then the line goes on')}
-          onHint={hint}
-          onExplorer={toExplorer}
-        />
       </div>
+      {/* At the bottom of the screen (phone), as against the bot. */}
+      <DrillActions
+        hinted={hinted || revealed}
+        disabled={!asking}
+        solutionTitle={t('Jouer le coup attendu (compté comme aidé), puis la ligne continue', 'Play the expected move (counted as helped), then the line goes on')}
+        onHint={hint}
+      />
     </div>
   );
 }
