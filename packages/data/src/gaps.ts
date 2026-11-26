@@ -9,13 +9,14 @@
  * Only the opponent moves forgotten among the replies a line prepares are listed: the end of a
  * line (on my move or on the opponent's, no answer after it) is not a missing move, nor a move
  * whose reply is obvious at my level or after which I already win (core obviousReply), nor one
- * leading to a position too rare at my level to have statistics.
+ * leading to a position too rare at my level to have statistics, nor one in a position not trained
+ * (behind a paused move, or only in paused repertoires).
  *
  * Runs on statistics at hand only (`storedStats`), so it answers at once. Positions the analysis
  * needs without them can be fetched in the background (`prefetch`, server): the client asks again
  * until nothing is pending, and each pass may reach deeper positions.
  */
-import { findGaps, gapCandidate, LINE_DEPTHS, mergeChapterMoves, obviousReply, pathTo, playUci, Repertoire, rankRepertoires, turnOf, type Color, type StoredStats } from '@e4e5/core';
+import { findGaps, gapCandidate, LINE_DEPTHS, mergeChapterMoves, obviousReply, pathTo, playUci, Repertoire, rankRepertoires, trainingRepertoire, turnOf, type Color, type StoredStats } from '@e4e5/core';
 import { and, eq, like } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { repertoireGraphs } from './repertoires.js';
@@ -92,7 +93,10 @@ export async function gapsAnalysis(db: Db, userId: string, q: GapsQuery, storedS
     const candidates = own.map((r) => gapCandidate(r.id, new Repertoire(color, r.moves)));
     // Not the ends of lines ("no-answer": nothing prepared after an opponent move), nor the
     // missing moves ignored.
-    const listed = report.gaps.filter((g) => g.kind === 'missing-reply' && g.prob >= q.cutoff);
+    // Nor the ones behind a paused move, or only in paused repertoires: the position must be
+    // trained, i.e. reached from the start without a paused move in an active repertoire.
+    const trained = new Set(own.filter((r) => r.active).flatMap((r) => [...trainingRepertoire(color, r.moves).reachable()]));
+    const listed = report.gaps.filter((g) => g.kind === 'missing-reply' && g.prob >= q.cutoff && trained.has(g.fen));
     // Nor the missing moves not worth preparing, judged on the statistics of the position they
     // lead to (core obviousReply): players of my level find a good reply by themselves, or I
     // already win most games there. A position without statistics (too rare at my level to be in

@@ -1,22 +1,22 @@
 /**
  * Accueil: what to do today at a glance. The day's training (series of days, what is left), the
- * repertoires to review, the latest mistake of my games, the missing move of the day, and my
+ * repertoires to review, my training mistakes to review (one at a time), the missing move of the day, and my
  * activity over the last weeks. Without any repertoire: what the app does and how to start.
  */
-import { START_FEN } from '@e4e5/core';
-import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type Gap, type Me, type RepertoireSummary, type TrainingSummary } from '../api';
-import { GameErrorCard } from '../components/GameErrorCard';
+import { api, type Gap, type Me, type RepertoireSummary, type ReviewError, type TrainingSummary } from '../api';
 import { MiniBoard } from '../components/MiniBoard';
+import { San } from '../components/Nag';
+import { SwipeRow } from '../components/SwipeRow';
 import { chapterForPosition } from '../chapters';
+import { playUci, START_FEN } from '@e4e5/core';
 import { moveText } from '../chessText';
 import { fmt, lang, t } from '../i18n';
 import { useTrainingSummary } from '../useTrainingSummary';
 import { useGaps } from '../useGaps';
 import { Button, Icon, plural } from '../ui';
-import { useGamesReport } from './Games';
 
 const WEEKS = 12;
 const DAY = 86_400_000;
@@ -31,7 +31,6 @@ const dayOf = (ms: number) => {
 export function Home({ me }: { me: Me }) {
   const reps = useQuery({ queryKey: ['repertoires'], queryFn: api.repertoires });
   const summary = useTrainingSummary(me);
-  const report = useGamesReport();
   const gaps = useGaps(me, (reps.data?.length ?? 0) > 0);
   // From the Monday WEEKS weeks ago (the grid's first column).
   const since = useMemo(() => {
@@ -49,26 +48,15 @@ export function Home({ me }: { me: Me }) {
   const due = active.reduce((n, s) => n + s.dueLines, 0);
   const fresh = Math.min(summary.data?.[0]?.remainingNewLines ?? 0, active.reduce((n, s) => n + s.availableLines, 0));
   const byId = new Map(reps.data.map((r) => [r.id, r]));
-  const error = report.data?.inbox.errors[0];
-  const gap = [...(gaps.data?.white?.gaps ?? []), ...(gaps.data?.black?.gaps ?? [])].filter((g) => g.repertoireId && g.move).sort((a, b) => b.prob - a.prob)[0];
+  const missing = [...(gaps.data?.white?.gaps ?? []), ...(gaps.data?.black?.gaps ?? [])].filter((g) => g.repertoireId && g.move).sort((a, b) => b.prob - a.prob);
 
   return (
     <div className="home stack">
       <Today name={name} due={due} fresh={fresh} answers={answers.data} loading={!summary.data} />
       <ToReview reps={reps.data} summary={summary.data} />
       <div className="home-grid">
-        {error && (
-          <section className="stack">
-            <div className="home-head">
-              <h3>{t('Erreur à corriger', 'Mistake to fix')}</h3>
-              <Link to="/games" className="small-text">
-                {t(`Toutes (${report.data!.inbox.errorCount})`, `All (${report.data!.inbox.errorCount})`)}
-              </Link>
-            </div>
-            <GameErrorCard item={error} rep={byId.get(error.repertoireId)} onDone={() => undefined} />
-          </section>
-        )}
-        {gap && <GapOfTheDay gap={gap} rep={byId.get(gap.repertoireId!)} />}
+        <ErrorDeck reps={byId} />
+        {missing.length > 0 && <GapDeck gaps={missing} reps={byId} />}
       </div>
       {answers.data && <Activity answers={answers.data} since={since} />}
     </div>
@@ -150,7 +138,6 @@ function ToReview({ reps, summary }: { reps: RepertoireSummary[]; summary: Train
     <section className="stack">
       <div className="home-head">
         <h3>{t('À réviser', 'To review')}</h3>
-        <Link to="/repertoires" className="small-text">{t('Tous les répertoires', 'All repertoires')}</Link>
       </div>
       <div className="home-carousel">
         {list.map((r) => {
@@ -179,11 +166,193 @@ function ToReview({ reps, summary }: { reps: RepertoireSummary[]; summary: Train
   );
 }
 
+/** Items put off ("plus tard") until the app is closed, per deck. */
+const laterSaved = (key: string): string[] => {
+  try {
+    return JSON.parse(sessionStorage.getItem(key) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+};
+
 /**
- * The most frequent opponent move not prepared yet: the position (the move in orange) and the
- * chapter it comes up in (the first one, when several reach it); a click opens it to prepare it.
+ * A deck of cards shown one at a time, in the given order. Swiped to the right, the item is
+ * ignored; to the left, put off until later (this session); then the next one comes.
  */
-function GapOfTheDay({ gap, rep }: { gap: Gap; rep: RepertoireSummary | undefined }) {
+function Deck<T>({
+  title,
+  aside,
+  items,
+  id,
+  laterKey,
+  onIgnore,
+  render,
+  empty,
+}: {
+  title: string;
+  /** Shown when there is nothing at all (none put off either). */
+  empty?: ReactNode;
+  aside?: ReactNode;
+  items: T[];
+  id: (item: T) => string;
+  /** sessionStorage key of the items put off. */
+  laterKey: string;
+  onIgnore: (item: T) => Promise<unknown>;
+  render: (item: T) => ReactNode;
+}) {
+  const [later, setLater] = useState<string[]>(() => laterSaved(laterKey));
+  /** Ignored here, hidden at once (until the list is computed again). */
+  const [ignored, setIgnored] = useState<Set<string>>(new Set());
+  const left = items.filter((x) => !ignored.has(id(x)));
+  const item = left.find((x) => !later.includes(id(x)));
+  const putOff = (x: T) => {
+    const next = [...later.filter((k) => k !== id(x)), id(x)];
+    sessionStorage.setItem(laterKey, JSON.stringify(next));
+    setLater(next);
+  };
+  const ignore = async (x: T) => {
+    setIgnored((s) => new Set(s).add(id(x)));
+    await onIgnore(x);
+  };
+  const putOffCount = left.filter((x) => later.includes(id(x))).length;
+  return (
+    <section className="stack">
+      <div className="home-head">
+        <h3>{title}</h3>
+        {aside}
+      </div>
+      {item ? (
+        <>
+          <SwipeRow key={id(item)} right={{ label: t('Ignorer', 'Ignore'), action: () => ignore(item) }} left={{ label: t('Plus tard', 'Later'), action: () => putOff(item) }}>
+            {render(item)}
+          </SwipeRow>
+          <div className="gap-deck-foot">
+            <span className="muted small-text gap-deck-hint">{t('Glissez à gauche : plus tard · à droite : ignorer', 'Swipe left: later · right: ignore')}</span>
+            <span className="gap-deck-buttons">
+              <Button size="sm" variant="ghost" onClick={() => putOff(item)}>{t('Plus tard', 'Later')}</Button>
+              <Button size="sm" variant="ghost" onClick={() => void ignore(item)}>{t('Ignorer', 'Ignore')}</Button>
+            </span>
+          </div>
+        </>
+      ) : !left.length && empty ? (
+        empty
+      ) : (
+        <p className="muted">
+          {t('Plus de position pour l’instant.', 'No more position for now.')}{' '}
+          {putOffCount > 0 && (
+            <button type="button" className="link" onClick={() => (sessionStorage.removeItem(laterKey), setLater([]))}>
+              {t(`Revoir ${plural(putOffCount, 'la position remise', 'les positions remises')} à plus tard`, `See the ${plural(putOffCount, 'position', 'positions')} put off again`)}
+            </button>
+          )}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** Key of a missing move (its position and the opponent move). */
+const gapId = (g: Gap) => `${g.fen}|${g.move!.uci}`;
+
+/**
+ * "Agrandissez votre répertoire !": the missing moves one at a time, most frequent first. Ignored,
+ * the move is not worth preparing. A tap opens it in the editor to prepare the reply.
+ */
+function GapDeck({ gaps, reps }: { gaps: Gap[]; reps: Map<string, RepertoireSummary> }) {
+  const qc = useQueryClient();
+  return (
+    <Deck
+      title={t('Agrandissez votre répertoire !', 'Grow your repertoire!')}
+      items={gaps}
+      id={gapId}
+      laterKey="e4e5.gapsLater"
+      onIgnore={async (g) => {
+        await api.ignoreGap(g.fen, g.move!.uci);
+        void qc.invalidateQueries({ queryKey: ['gaps'] });
+      }}
+      render={(g) => <GapCard gap={g} rep={reps.get(g.repertoireId!)} />}
+    />
+  );
+}
+
+/** Training mistakes of the last days only. */
+const TRAINING_DAYS = 7;
+/** Training mistakes ignored (key with their time: a new mistake there comes back). */
+const IGNORED_KEY = 'e4e5.trainingErrorsIgnored';
+const ignoredSaved = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(IGNORED_KEY) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+};
+const errorId = (e: ReviewError) => `${e.fen}|${e.uci}|${e.reviewedAt}`;
+
+/**
+ * "Revoir vos erreurs": my training mistakes (Réviser and Se tester) of the last days not
+ * answered right since, active repertoires, the latest first, one at a time. Ignored, a mistake
+ * is forgotten (it comes back if missed again). A tap trains the position again.
+ */
+function ErrorDeck({ reps }: { reps: Map<string, RepertoireSummary> }) {
+  // From midnight TRAINING_DAYS days ago (a stable query key through the day).
+  const since = dayOf(Date.now()) - TRAINING_DAYS * DAY;
+  const training = useQuery({ queryKey: ['training-errors', since], queryFn: () => api.trainingErrors(since), staleTime: 0 });
+  const errors = useMemo(() => {
+    const ignored = new Set(ignoredSaved());
+    return (training.data ?? []).filter((e) => reps.get(e.repertoireId)?.active !== false && !ignored.has(errorId(e)));
+  }, [training.data, reps]);
+  if (!training.data) return null;
+  return (
+    <Deck
+      title={t('Revoir vos erreurs', 'Review your mistakes')}
+      items={errors}
+      id={errorId}
+      laterKey="e4e5.errorsLater"
+      onIgnore={async (e) => localStorage.setItem(IGNORED_KEY, JSON.stringify([...ignoredSaved(), errorId(e)].slice(-500)))}
+      empty={
+        <div className="card home-empty">
+          <span className="mode-icon"><Icon name="target" size={22} /></span>
+          <span className="home-empty-text">
+            <strong>{t('Aucune erreur à revoir', 'No mistake to review')}</strong>
+            <span className="muted small-text">{t('Les coups manqués en révision ou en test viendront ici.', 'The moves you miss in review or in a test will come here.')}</span>
+          </span>
+          <Button size="sm" to="/train?mode=test">{t('Se tester', 'Test yourself')}</Button>
+        </div>
+      }
+      render={(e) => <TrainingErrorCard error={e} rep={reps.get(e.repertoireId)} />}
+    />
+  );
+}
+
+/** "aujourd'hui", "hier", else the date. */
+const whenText = (at: number) => {
+  const diff = Math.round((dayOf(Date.now()) - dayOf(at)) / DAY);
+  return diff === 0 ? t('aujourd’hui', 'today') : diff === 1 ? t('hier', 'yesterday') : new Date(at).toLocaleDateString(lang, { weekday: 'long', day: 'numeric', month: 'long' });
+};
+
+/** A mistake of my training: the position and the move expected (green); a tap trains it again. */
+function TrainingErrorCard({ error, rep }: { error: ReviewError; rep: RepertoireSummary | undefined }) {
+  const to = `/r/${error.repertoireId}/train?${new URLSearchParams({ mode: 'review', from: error.fen })}`;
+  const move = error.uci ? playUci(error.fen, error.uci) : null;
+  const mode = error.mode === 'test' ? t('en test', 'in a test') : t('en révision', 'in review');
+  return (
+    <Link to={to} className="card home-gap" draggable={false}>
+      <MiniBoard fen={error.fen} orientation={error.color} arrows={error.uci ? [{ uci: error.uci, kind: 'repertoire' }] : []} />
+      <span className="home-gap-text">
+        {t(
+          <>Manqué {mode} {whenText(error.reviewedAt)} : le coup attendu était <strong>{move ? <San san={move.san} /> : '?'}</strong>. Rejouez-le.</>,
+          <>Missed {mode} {whenText(error.reviewedAt)}: the expected move was <strong>{move ? <San san={move.san} /> : '?'}</strong>. Play it again.</>,
+        )}
+        {rep && <span className="muted small-text"> · {rep.name}</span>}
+      </span>
+    </Link>
+  );
+}
+
+/**
+ * A missing move: the position (the move in orange) and the chapter it comes up in (the first one,
+ * when several reach it); a tap opens it in the editor to prepare the reply.
+ */
+function GapCard({ gap, rep }: { gap: Gap; rep: RepertoireSummary | undefined }) {
   const to = `/r/${gap.repertoireId}?${new URLSearchParams({ line: gap.ucis.join(','), gap: '1' })}`;
   const detail = useQuery({ queryKey: ['repertoire', gap.repertoireId], queryFn: () => api.repertoire(gap.repertoireId!), enabled: !!gap.repertoireId });
   const d = detail.data;
@@ -191,17 +360,14 @@ function GapOfTheDay({ gap, rep }: { gap: Gap; rep: RepertoireSummary | undefine
   const where = chapter ?? rep?.name;
   const move = moveText(gap.line, gap.move!.san, true);
   return (
-    <section className="stack">
-      <h3>{t('Coup manquant du jour', 'Missing move of the day')}</h3>
-      <Link to={to} className="card home-gap">
-        <MiniBoard fen={gap.fen} orientation={rep?.color ?? 'white'} arrows={[{ uci: gap.move!.uci, kind: 'popular' }]} />
-        <span className="home-gap-text">
-          {where
-            ? t(<>Dans <strong>{where}</strong>, préparez votre réponse contre <strong className="hole-move">{move}</strong></>, <>In <strong>{where}</strong>, prepare your reply to <strong className="hole-move">{move}</strong></>)
-            : t(<>Préparez votre réponse contre <strong className="hole-move">{move}</strong></>, <>Prepare your reply to <strong className="hole-move">{move}</strong></>)}
-        </span>
-      </Link>
-    </section>
+    <Link to={to} className="card home-gap" draggable={false}>
+      <MiniBoard fen={gap.fen} orientation={rep?.color ?? 'white'} arrows={[{ uci: gap.move!.uci, kind: 'popular' }]} />
+      <span className="home-gap-text">
+        {where
+          ? t(<>Dans <strong>{where}</strong>, préparez votre réponse contre <strong className="hole-move">{move}</strong></>, <>In <strong>{where}</strong>, prepare your reply to <strong className="hole-move">{move}</strong></>)
+          : t(<>Préparez votre réponse contre <strong className="hole-move">{move}</strong></>, <>Prepare your reply to <strong className="hole-move">{move}</strong></>)}
+      </span>
+    </Link>
   );
 }
 

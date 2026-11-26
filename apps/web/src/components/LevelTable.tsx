@@ -1,7 +1,7 @@
-import { playUci, totalGames, type Color, type ExplorerResponse, type PlayedMove } from '@e4e5/core';
+import { formatScore, playUci, totalGames, type Color, type EngineLine, type ExplorerResponse, type PlayedMove } from '@e4e5/core';
 import { San } from './Nag';
 import { WdlBar } from './WdlBar';
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import type { BestMovesResponse } from '../api';
 import { moveText } from '../chessText';
 import { fmt, t } from '../i18n';
@@ -14,7 +14,7 @@ const share = (n: number, total: number) => (total ? (100 * n) / total : 0);
 const SHOWN = 3;
 const games = (n: number) => (n >= 1000 ? `${fmt(n / 1000, { maximumFractionDigits: n < 100_000 ? 1 : 0 })}${t(' k', 'k')}` : String(n));
 
-export type LevelSort = 'score' | 'freq';
+export type LevelSort = 'score' | 'freq' | 'eval';
 
 const SORT_KEY = 'levelSortChoice';
 
@@ -26,7 +26,7 @@ const SORT_KEY = 'levelSortChoice';
 export function useLevelSort() {
   const [choice, setChoice] = useState<LevelSort | null>(() => {
     const v = localStorage.getItem(SORT_KEY);
-    return v === 'score' || v === 'freq' ? v : null;
+    return v === 'score' || v === 'freq' || v === 'eval' ? v : null;
   });
   const set = (s: LevelSort | null) => {
     if (s) localStorage.setItem(SORT_KEY, s);
@@ -65,6 +65,7 @@ export function LevelTable({
   levelError,
   range,
   engineBest,
+  engine,
   limit = 10,
 }: {
   data: ExplorerResponse;
@@ -96,17 +97,29 @@ export function LevelTable({
   range: string;
   /** Stockfish's best move, to mark when both agree. */
   engineBest?: string;
+  /**
+   * Stockfish merged into the table (analysis on): the evaluation of each move searched (the
+   * moves shown, told by `onShown`, and the best one), its best line (a row of its own when its
+   * move is not in the table), and its depth.
+   */
+  engine?: {
+    byMove: Map<string, EngineLine>;
+    best: EngineLine | undefined;
+    depth: number;
+    maxDepth: number;
+    onShown: (ucis: string[]) => void;
+  };
   /** Only the most played moves, plus the repertoire moves played less often. */
   limit?: number;
 }) {
   const [choice, setChoice] = useLevelSort();
   // By default: my turn by score (my best moves first), the opponent's by number of games (the
   // replies I will most likely face). A sort chosen by a click applies everywhere until undone.
-  const sort: LevelSort = choice ?? (myTurn ? 'score' : 'freq');
+  // The sort by evaluation needs Stockfish (else the default one).
+  const sort: LevelSort = (choice === 'eval' && !engine ? null : choice) ?? (myTurn ? 'score' : 'freq');
   const [open, setOpen] = useState<string | null>(null);
   const [all, setAll] = useState(false);
   const total = totalGames(data);
-  if (total === 0) return <div className="level-status muted">{t('Aucune partie dans cette position.', 'No games in this position.')}</div>;
 
   const searching = depth > 0;
   const found = new Map((searching ? level?.moves ?? [] : []).map((m) => [m.uci, m]));
@@ -124,10 +137,28 @@ export function LevelTable({
   // others on their own win rate (too rarely played to be candidates: a noisy score, not the best).
   const scored = (r: (typeof rows)[number]) => (searching && level && !r.best ? 0 : 1);
   if (sort === 'score') rows.sort((a, b) => scored(b) - scored(a) || b.score - a.score || b.n - a.n);
+  if (sort === 'eval' && engine) {
+    // The best for the side to move first (Stockfish's order: on the opponent's turn, its best
+    // moves, not its mistakes); the moves not evaluated after, by number of games.
+    const sign = fen.split(' ')[1] === 'w' ? 1 : -1;
+    const value = (uci: string) => {
+      const l = engine.byMove.get(uci);
+      if (!l) return -Infinity;
+      const v = 'mate' in l.score ? Math.sign(l.score.mate) * (100_000 - Math.abs(l.score.mate)) : l.score.cp;
+      return sign * v;
+    };
+    rows.sort((a, b) => value(b.m.uci) - value(a.m.uci) || b.n - a.n);
+  }
   // Searched up to the depth reached: the best of these is the move the search recommends (my
   // turn only: on the opponent's, the best for me is not its likely move).
   const top = searching && myTurn ? rows.find((r) => r.best && r.best.minReach === reach) : undefined;
   const shown = all ? rows : rows.slice(0, SHOWN);
+  // The moves shown: the ones Stockfish evaluates (with its best move).
+  const shownKey = shown.map((r) => r.m.uci).join(' ');
+  useEffect(() => engine?.onShown(shownKey ? shownKey.split(' ') : []), [shownKey, fen]);
+  // Stockfish's best move when it is not in the table (not played at my level, or among the rarest).
+  const engineOnly = engine?.best?.pv[0] && !rows.some((r) => r.m.uci === engine.best!.pv[0]!.uci) ? engine.best : undefined;
+  if (total === 0) return <div className="level-status muted">{t('Aucune partie dans cette position.', 'No games in this position.')}</div>;
 
   /** The moves of `ucis` played from the position (stops at an illegal one). */
   const played = (ucis: string[]) => {
@@ -191,6 +222,29 @@ export function LevelTable({
     `${myTurn ? '' : "Opponent's turn: each opponent move is computed as if the analysis started after it (your best answer, then the likely lines). "}Lines are followed as long as they occur in at least ${pct(steps[(reached || depth) - 1]!)} of the games at your level (your best moves, the opponent's replies weighted by their frequency)${plies > 1 ? `: here up to ${plies} plies further` : ''}. The lower the threshold, the further the lines go; the number of moves depends on the position.`,
   );
 
+  /** Stockfish's evaluation of a move (White's side, as on Lichess); a click plays its line. */
+  const evalCell = (uci: string) => {
+    if (!engine) return null;
+    const l = engine.byMove.get(uci);
+    if (!l) return <td className="eval-col muted">…</td>;
+    const value = 'mate' in l.score ? l.score.mate : l.score.cp;
+    const line = l.pv.slice(0, 8);
+    return (
+      <td className="eval-col" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className={`eval ${value >= 0 ? 'w' : 'b'}`}
+          onClick={() => onPlay(line)}
+          title={t(`Stockfish (profondeur ${l.depth}) : ${pvText(line)} — cliquer pour jouer la ligne`, `Stockfish (depth ${l.depth}): ${pvText(line)} — click to play the line`)}
+        >
+          {formatScore(l.score)}
+        </button>
+      </td>
+    );
+  };
+  const pvText = (line: PlayedMove[]) => line.map((m, i) => `${num(i)}${m.san}`).join(' ');
+  const cols = engine ? 6 : 5;
+
   const header = (key: LevelSort, label: string, title: string, className: string) => (
     <th className={className}>
       {/* Purple only when chosen by a click; the default sort is shown in the normal colour. */}
@@ -213,6 +267,16 @@ export function LevelTable({
           <tr>
             <th className="san">{t('Coup', 'Move')}</th>
             {header('score', 'Score', t('Trier par score (pour vous)', 'Sort by score (for you)'), 'score-col')}
+            {engine &&
+              header(
+                'eval',
+                t('Éval', 'Eval'),
+                t(
+                  'Trier par évaluation de Stockfish (les meilleurs coups du camp au trait en premier ; affichée pour les Blancs)',
+                  'Sort by Stockfish’s evaluation (the best moves of the side to move first; shown for White)',
+                ),
+                'eval-col',
+              )}
             {header('freq', t('Parties', 'Games'), t('Trier par nombre de parties', 'Sort by number of games'), 'count')}
             <th className="wdl" />
             <th className="unfold-col" />
@@ -272,6 +336,7 @@ export function LevelTable({
                       {pct(score)}
                     </span>
                   </td>
+                  {evalCell(m.uci)}
                   <td className="count" title={t(
                       `${fmt(n)} parties · ${fmt(share(n, total), { maximumFractionDigits: 1 })} % des parties`,
                       `${fmt(n)} games · ${fmt(share(n, total), { maximumFractionDigits: 1 })}% of the games`,
@@ -298,7 +363,7 @@ export function LevelTable({
                 </tr>
                 {isOpen && best && (
                   <tr className="level-detail">
-                    <td colSpan={5}>
+                    <td colSpan={cols}>
                       <div className="pv">
                         {best.line.slice(0, 10).map((s, i, line) => (
                           <button key={i} className="link" onClick={() => onPlay(played(line.slice(0, i + 1).map((x) => x.uci)))} title={t('Jouer jusqu’à ce coup', 'Play up to this move')}>
@@ -329,6 +394,21 @@ export function LevelTable({
               </Fragment>
             );
           })}
+          {engineOnly && (
+            <tr className="engine-only" onClick={() => onPick(engineOnly.pv[0]!.uci)} title={t('Meilleur coup de Stockfish, pas joué à votre niveau : jouer ce coup', 'Stockfish’s best move, not played at your level: play this move')}>
+              <td className="san">
+                <San san={engineOnly.pv[0]!.san} nags={nagsOf?.(engineOnly.pv[0]!.uci)} />
+                <span className="sf-tag" aria-label="Stockfish">
+                  <Icon name="engine" size={12} />
+                </span>
+              </td>
+              <td className="score-col muted">–</td>
+              {evalCell(engineOnly.pv[0]!.uci)}
+              <td className="count muted">{t('non joué', 'not played')}</td>
+              <td className="wdl" />
+              <td className="unfold-col" />
+            </tr>
+          )}
         </tbody>
       </table>
       <div className="level-footer muted">
@@ -352,6 +432,11 @@ export function LevelTable({
           </span>
         </label>
         <span className="level-range">Lichess {range}</span>
+        {engine && (
+          <span className="level-range" title={t('Profondeur de Stockfish', 'Stockfish depth')}>
+            SF {engine.depth}/{engine.maxDepth}
+          </span>
+        )}
       </div>
     </>
   );

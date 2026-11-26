@@ -1,7 +1,9 @@
-import type { Color, PlayedMove } from '@e4e5/core';
+import type { Color, EngineLine, PlayedMove } from '@e4e5/core';
+import type { ComponentProps } from 'react';
 import { ApiError, type BestMovesResponse, type Stats, type StatsMeta } from '../api';
 import { locale, t } from '../i18n';
 import { rangeLabel, speedsLabel } from '../settings';
+import { EngineLines } from './EnginePanel';
 import { LevelTable } from './LevelTable';
 
 interface Props {
@@ -34,6 +36,11 @@ interface Props {
     range: string;
     engineBest?: string;
   };
+  /**
+   * Stockfish merged into the table (Éval column); its lines alone when the position has no
+   * statistics. Absent: analysis off.
+   */
+  engine?: NonNullable<ComponentProps<typeof LevelTable>['engine']> & { lines: EngineLine[] };
 }
 
 export const REASONS: Record<NonNullable<StatsMeta['reason']>, string> = t(
@@ -47,13 +54,10 @@ export const REASONS: Record<NonNullable<StatsMeta['reason']>, string> = t(
   },
 );
 
-const monthLabel = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
-/** "octobre 2026", "août 2026 – octobre 2026" / "October 2026", "August 2026 – October 2026". */
-const periodLabel = (p: NonNullable<StatsMeta['period']>) => (p.since === p.until ? monthLabel(p.since) : `${monthLabel(p.since)} – ${monthLabel(p.until)}`);
 
 /**
- * Says where the numbers come from: the months of games counted (so they differ from the Lichess
- * site, which counts every game), and when they are not live data for the selected range.
+ * Says when the numbers are not data for the selected range (the months of games counted are in
+ * the Settings).
  */
 function provenance(meta: StatsMeta): string | null {
   const date = new Date(meta.fetchedAt).toLocaleDateString(locale);
@@ -65,7 +69,6 @@ function provenance(meta: StatsMeta): string | null {
     );
   }
   if (meta.reason) return t(`Données enregistrées le ${date}${why}.`, `Data stored on ${date}${why}.`);
-  if (meta.period) return t(`Parties Lichess : ${periodLabel(meta.period)}.`, `Lichess games: ${periodLabel(meta.period)}.`);
   return null;
 }
 
@@ -73,22 +76,37 @@ function provenance(meta: StatsMeta): string | null {
  * Moves played at the user's level in this position, merged with the search at my level (see
  * LevelTable), marked when in the repertoire. Under the board, like the engine lines.
  */
-export function ExplorerPanel({ fen, color, inRep, nagsOf, stats, error, loading, onPick, isMissing, firstMoveNumber, onPlay, level }: Props) {
+export function ExplorerPanel({ fen, color, inRep, nagsOf, stats, error, loading, onPick, isMissing, firstMoveNumber, onPlay, level, engine }: Props) {
   const data = stats?.data;
   const origin = stats ? provenance(stats.meta) : null;
   const missing = error instanceof ApiError && error.status === 404;
   const missingReason = missing ? (error.body.reason as StatsMeta['reason']) : undefined;
+  const missingTitle = t(
+    `Aucune statistique pour cette position${missingReason ? ` : ${REASONS[missingReason]}` : ''}.`,
+    `No statistics for this position${missingReason ? `: ${REASONS[missingReason]}` : ''}.`,
+  );
   // Under the board like the engine lines: no heading, the notes in small.
   return (
     <div className="level-lines level-table">
       {loading && <div className="level-status muted">{t('Chargement…', 'Loading…')}</div>}
-      {missing && (
-        <div className="level-status muted">
-          {t('Aucune statistique pour cette position', 'No statistics for this position')}
-          {missingReason ? t(` : ${REASONS[missingReason]}`, `: ${REASONS[missingReason]}`) : ''}.
-        </div>
-      )}
       {Boolean(error) && !missing && <div className="level-status error">{String(error)}</div>}
+      {/* No statistics here: Stockfish's lines alone, the note on their depth line (why in its tooltip). */}
+      {engine && !loading && (!data || data.moves.length === 0) && (
+        <EngineLines
+          enabled
+          lines={engine.lines}
+          depth={engine.depth}
+          maxDepth={engine.maxDepth}
+          firstMoveNumber={firstMoveNumber}
+          onPlay={onPlay}
+          note={missing ? <span title={missingTitle}>{t('Pas de statistiques Lichess', 'No Lichess statistics')}</span> : undefined}
+        />
+      )}
+      {missing && !engine && (
+        <p className="level-missing muted" title={missingTitle}>
+          {t('Pas de statistiques Lichess', 'No Lichess statistics')}
+        </p>
+      )}
       {data && (
         <LevelTable
           data={data}
@@ -109,6 +127,7 @@ export function ExplorerPanel({ fen, color, inRep, nagsOf, stats, error, loading
           levelError={level.error}
           range={level.range}
           engineBest={level.engineBest}
+          engine={engine}
         />
       )}
       {origin && <p className="warning small-text level-origin">{origin}</p>}

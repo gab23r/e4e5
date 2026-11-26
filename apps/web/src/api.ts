@@ -11,6 +11,7 @@ export interface ReviewError {
   fen: string;
   uci: string | null;
   reviewedAt: number;
+  mode: TrainingMode;
 }
 
 export interface StatsMeta {
@@ -411,8 +412,8 @@ export interface Api {
   cards: () => Promise<ReviewCard[]>;
   /** An answer: `id` makes it count once, `reviewedAt` is when it was given. */
   review: (id: string, answer: { fen: string; uci: string; grade: Grade; id: string; reviewedAt: number; mode?: TrainingMode }) => Promise<ReviewCard>;
-  /** My mistakes in Réviser, the latest first (history of the training page). */
-  reviewErrors: () => Promise<ReviewError[]>;
+  /** My training mistakes since a time (ms) not answered right since, the latest first. */
+  trainingErrors: (since: number) => Promise<ReviewError[]>;
   /** My answers since a time (ms): when, right or not (activity of the home page). */
   answersSince: (since: number) => Promise<{ at: number; ok: boolean }[]>;
   gaps: (speeds: string[], ratings: number[], cutoff: number) => Promise<GapsResponse>;

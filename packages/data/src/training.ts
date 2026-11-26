@@ -7,7 +7,7 @@
  * given, so the same card is computed again.
  */
 import { recallOf, scheduleReview, turnOf, type Grade } from '@e4e5/core';
-import { and, asc, desc, eq, gte, inArray, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray } from 'drizzle-orm';
 import { DataError, type Db } from './db.js';
 import { ownRepertoire } from './repertoires.js';
 import { chapters, moveCards, repertoires, repMoves, reviewLog } from './schema.js';
@@ -123,25 +123,34 @@ export async function reviewNow(db: Db, userId: string, repertoireId: string, fe
 }
 
 /**
- * My mistakes in Réviser (answers graded "again"), the latest first: the history of the training
- * page. Answers recorded before the modes were (mode null) count as Réviser.
+ * My training mistakes not fixed yet (Réviser and Se tester, the mistakes to review of the home
+ * page): per move asked, the last answer since `since` (ms) if it was wrong. Answered right
+ * since, in any mode, the mistake is fixed. The latest first. Answers recorded before the modes
+ * were (mode null) count as Réviser.
  */
-export async function reviewErrors(db: Db, userId: string, limit = 300) {
+export async function trainingErrors(db: Db, userId: string, since: number) {
   const rows = await db
     .select({
       repertoireId: repertoires.id,
       color: repertoires.color,
       fen: reviewLog.fen,
       uci: reviewLog.uci,
+      grade: reviewLog.grade,
       reviewedAt: reviewLog.reviewedAt,
+      mode: reviewLog.mode,
     })
     .from(reviewLog)
     .innerJoin(chapters, eq(chapters.id, reviewLog.chapterId))
     .innerJoin(repertoires, eq(repertoires.id, chapters.repertoireId))
-    .where(and(eq(repertoires.userId, userId), eq(reviewLog.grade, 'again'), or(eq(reviewLog.mode, 'review'), isNull(reviewLog.mode))))
-    .orderBy(desc(reviewLog.reviewedAt))
-    .limit(limit);
-  return rows.map((r) => ({ ...r, reviewedAt: r.reviewedAt.getTime() }));
+    .where(and(eq(repertoires.userId, userId), gte(reviewLog.reviewedAt, new Date(since))))
+    .orderBy(asc(reviewLog.reviewedAt));
+  // The last answer per move asked (a position in several repertoires: once).
+  const last = new Map<string, (typeof rows)[number]>();
+  for (const r of rows) last.set(`${r.fen}|${r.uci}`, r);
+  return [...last.values()]
+    .filter((r) => r.grade === 'again')
+    .reverse()
+    .map(({ grade: _, ...r }) => ({ ...r, mode: r.mode ?? 'review', reviewedAt: r.reviewedAt.getTime() }));
 }
 
 /** My answers since a time (ms), any mode: when, and right or not (the activity of the home page). */

@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { playUci, START_FEN, type ExplorerResponse } from '@e4e5/core';
-import { createChapter, createRepertoire, gapsAnalysis, saveLine, type Db } from '../src/index.js';
+import { createChapter, createRepertoire, gapsAnalysis, getChapter, saveLine, updateChapter, updateMove, type Db } from '../src/index.js';
 import * as schema from '../src/schema.js';
 import { users } from '../src/schema.js';
 
@@ -62,6 +62,29 @@ describe('gap finder report', () => {
       new Map(fens.flatMap((f) => (table.has(f) ? [[f, { data: table.get(f)!, exact: true }] as const] : [])));
     const report = await gapsAnalysis(db, 'u1', { speeds: ['blitz'], ratings: [1600], cutoff: 0.01 }, storedStats);
     expect(report.white!.gaps.map((g) => [g.move?.uci, g.repertoireId])).toEqual([['c7c6', rep.id]]);
+  });
+
+  it('leaves out the missing moves behind a paused move, and in a paused repertoire', async () => {
+    const rep = await createRepertoire(db, 'u1', { name: 'Blancs', color: 'white' });
+    const chapter = await createChapter(db, 'u1', rep.id, { name: 'Blancs' });
+    await saveLine(db, 'u1', chapter.id, ['e2e4', 'e7e5', 'g1f3']);
+    await saveLine(db, 'u1', chapter.id, ['d2d4', 'd7d5']);
+    const table = new Map<string, ExplorerResponse>([
+      [after('e2e4'), stats([['e7e5', 300, 100, 300], ['c7c6', 100, 50, 100]])],
+      [after('e2e4', 'c7c6'), stats([['b1c3', 20, 10, 50], ['d2d4', 40, 10, 10]])],
+    ]);
+    const storedStats = async (fens: string[]) =>
+      new Map(fens.flatMap((f) => (table.has(f) ? [[f, { data: table.get(f)!, exact: true }] as const] : [])));
+    const gaps = async () => (await gapsAnalysis(db, 'u1', { speeds: ['blitz'], ratings: [1600], cutoff: 0.01 }, storedStats)).white!.gaps.map((g) => g.move?.uci);
+    expect(await gaps()).toEqual(['c7c6']);
+    // The repertoire paused (its only chapter): nothing to prepare there.
+    await updateChapter(db, 'u1', chapter.id, { active: false });
+    expect(await gaps()).toEqual([]);
+    await updateChapter(db, 'u1', chapter.id, { active: true });
+    // 1. e4 paused: the line behind it is not trained, its missing moves not listed.
+    const e4 = (await getChapter(db, 'u1', chapter.id)).moves.find((m) => m.uci === 'e2e4')!;
+    await updateMove(db, 'u1', chapter.id, e4.id, { paused: true });
+    expect(await gaps()).toEqual([]);
   });
 
   it('gives the line inside the repertoire when the most played way to the missing move transposes', async () => {

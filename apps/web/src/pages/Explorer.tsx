@@ -6,14 +6,14 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, ApiError, type Me, type MyGameRef, type ChapterMoveHere } from '../api';
 import { Board } from '../components/Board';
-import { EngineLines, EvalBar } from '../components/EnginePanel';
+import { EvalBar } from '../components/EnginePanel';
 import { chapterLabel } from '../chapters';
 import { lineText, parseMoves } from '../components/lineText';
-import { useEngine } from '../engine/useEngine';
+import { useTableEngine } from '../engine/useEngine';
 import { useGaps } from '../useGaps';
 import { LEVEL_STEPS, topLevelMove, useBestMoves, useLevelDepth } from '../components/BestMoves';
 import { ExplorerPanel } from '../components/ExplorerPanel';
-import { AnalysisToggle, ToolCards, useAnalysisToggle } from '../components/ToolCards';
+import { AnalysisToggle, useAnalysisToggle } from '../components/ToolCards';
 import { MoveTable } from '../components/MoveTable';
 import { San } from '../components/Nag';
 import { OpeningName } from '../components/OpeningName';
@@ -126,7 +126,7 @@ export function Explorer({ me }: { me: Me }) {
   const pathNags = line.map(
     (m, i) => pathPositions[i]?.data?.find((r) => r.color === orientation && r.uci === m.uci && r.nags?.length)?.nags ?? null,
   );
-  // One button for the analysis: Lichess at my level and Stockfish both run (ToolCards).
+  // One button for the analysis: Lichess at my level and Stockfish both run, in one table.
   const [analysisOn, toggleAnalysis] = useAnalysisToggle();
   const levelOn = analysisOn;
   const engineOn = analysisOn;
@@ -146,7 +146,7 @@ export function Explorer({ me }: { me: Me }) {
     staleTime: 60_000,
   });
 
-  const engine = useEngine(fen, engineOn);
+  const engine = useTableEngine(fen, engineOn);
   const best = engineOn ? engine.lines[0]?.pv[0] : undefined;
   // Moves at my level for the side to move (Lichess explorer), only when asked: the violet card.
   const [levelDepth, onDepth] = useLevelDepth();
@@ -353,49 +353,32 @@ export function Explorer({ me }: { me: Me }) {
           <button onClick={flip} title={t('Retourner l’échiquier (f)', 'Flip the board (f)')}>⇅</button>
           <AnalysisToggle enabled={analysisOn} onToggle={toggleAnalysis} />
         </div>
-        {/* The two tools in swipeable cards, one in view at a time (ToolCards). */}
+        {/* The analysis: the Lichess moves at my level with Stockfish's evaluation (Éval column). */}
         {analysisOn && (
-        <ToolCards
-          engine={
-            (
-              <EngineLines
-                enabled={engineOn}
-                lines={engine.lines}
-                depth={engine.depth}
-                maxDepth={engine.maxDepth}
-                firstMoveNumber={ply}
-                onPlay={playMoves}
-              />
-            )
-          }
-          level={
-            (
-            <ExplorerPanel
-              fen={fen}
-              color={orientation}
-              inRep={(uci) => prepared.has(uci)}
-              nagsOf={(uci) => prepared.get(uci)?.nags}
-              stats={lichess.data}
-              error={lichess.error}
-              loading={lichess.isLoading}
-              onPick={play}
-              isMissing={isMissing}
-              firstMoveNumber={ply}
-              onPlay={playMoves}
-              level={{
-                data: level.data,
-                loading: level.isLoading,
-                error: level.error,
-                depth,
-                maxDepth: LEVEL_STEPS,
-                onDepth,
-                myTurn,
-                range: rangeLabel(ex.ratings),
-                engineBest: best?.uci,
-              }}
-            />
-            )
-          }
+        <ExplorerPanel
+          fen={fen}
+          color={orientation}
+          inRep={(uci) => prepared.has(uci)}
+          nagsOf={(uci) => prepared.get(uci)?.nags}
+          stats={lichess.data}
+          error={lichess.error}
+          loading={lichess.isLoading}
+          onPick={play}
+          isMissing={isMissing}
+          firstMoveNumber={ply}
+          onPlay={playMoves}
+          level={{
+            data: level.data,
+            loading: level.isLoading,
+            error: level.error,
+            depth,
+            maxDepth: LEVEL_STEPS,
+            onDepth,
+            myTurn,
+            range: rangeLabel(ex.ratings),
+            engineBest: best?.uci,
+          }}
+          engine={{ byMove: engine.byMove, best: engine.lines[0], lines: engine.lines, depth: engine.depth, maxDepth: engine.maxDepth, onShown: engine.onShown }}
         />
         )}
       </div>

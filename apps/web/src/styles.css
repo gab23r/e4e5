@@ -879,31 +879,11 @@ table.explorer tr.move-detail table.games { font-size: 0.85rem; }
 .eval-label.on-white { color: #131210; }
 .eval-label.on-black { color: #f2efe4; }
 
-/* Tools under the board (components/ToolCards.tsx): one card in view, a swipe to switch. */
-.tool-cards { margin: 8px var(--page-pad) 0; min-width: 0; }
-@media (min-width: 900px) { .tool-cards { margin: 8px 0 0; } }
-.tool-card > .engine-lines, .tool-card > .level-lines { margin: 0; }
-.tool-track { display: flex; align-items: flex-start; }
-.tool-track.several { overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; transition: height 0.2s ease; }
-.tool-track.several::-webkit-scrollbar { display: none; }
-.tool-card { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; }
-
-.tool-card.enter-right { animation: tool-enter-right 0.22s ease-out; }
-.tool-card.enter-left { animation: tool-enter-left 0.22s ease-out; }
-@keyframes tool-enter-right { from { transform: translateX(40%); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes tool-enter-left { from { transform: translateX(-40%); opacity: 0; } to { transform: none; opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .tool-card.enter-right, .tool-card.enter-left { animation: none; } }
-.tool-cards { overflow-x: clip; }
 .eval-bar.off { background: none; }
-/* One button for the analysis (Lichess at my level + Stockfish), and the tabs of its two cards. */
+/* One button for the analysis (Lichess at my level + Stockfish, in one table). */
 .analysis-toggle { flex: 0 0 auto; width: 48px; color: var(--muted); }
 .analysis-toggle.on { color: #fff; background: var(--level); border-color: var(--level); }
 .analysis-toggle.on:hover { background: #a877f0; }
-.tool-tabs { display: flex; gap: 14px; margin: 0 2px 4px; }
-.tool-tabs button { min-height: 0; padding: 2px 0; background: none; border: none; border-radius: 0; font-size: 0.75rem; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; }
-.tool-tabs button:hover { background: none; color: var(--text); }
-.tool-tabs button.on { color: var(--text); border-bottom-color: var(--level); }
-.tool-tabs button.on:last-child { border-bottom-color: var(--engine-ui); }
 
 /* Actions on a move, after a long press (components/MoveActionsDialog.tsx). */
 .move-actions-dialog { width: min(400px, calc(100vw - 24px)); }
@@ -998,18 +978,12 @@ table.explorer tr.move-detail table.games { font-size: 0.85rem; }
 .mode-icon { flex: none; display: grid; place-items: center; width: 46px; height: 46px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
 .mode-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .mode-text strong { font-size: 1.05rem; }
-.error-day h4 { margin: 0 0 6px; font-weight: 600; }
-.error-day h4::first-letter { text-transform: uppercase; }
-.error-list { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
-.error-item { display: flex; gap: 12px; align-items: center; padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); }
-.error-item:hover { text-decoration: none; background: var(--surface-2); }
-.error-item .mini-board { width: 84px; height: 84px; flex: none; }
-.error-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.error-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 
 /* --- Accueil (pages/Home.tsx) ----------------------------------------------------------------- */
-.home { gap: 24px; }
+.home { gap: 40px; padding-bottom: 24px; }
+/* A section: its title, then its content, with room between them. */
+.home > section, .home-grid > section { gap: 16px; }
 .home-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .home-head h3 { margin: 0; }
 .home-today {
@@ -1029,14 +1003,16 @@ table.explorer tr.move-detail table.games { font-size: 0.85rem; }
 .home-rep:hover { text-decoration: none; background: var(--surface-2); transform: translateY(-2px); }
 .home-rep .mini-board { width: 146px; height: 146px; pointer-events: none; }
 .home-rep-name { font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-grid { display: grid; gap: 24px; grid-template-columns: 1fr; }
+.home-grid { display: grid; gap: 40px; grid-template-columns: 1fr; }
 .home-grid:empty { display: none; }
 @media (min-width: 1000px) { .home-grid { grid-template-columns: 1fr 1fr; } }
-.home-gap { display: flex; flex-direction: column; gap: 12px; align-items: stretch; color: var(--text); }
+a.card.home-gap { display: flex; flex-direction: column; gap: 22px; align-items: stretch; padding: 18px; color: var(--text); }
 .home-gap:hover { text-decoration: none; background: var(--surface-2); }
 .home-gap .mini-board { width: min(100%, 360px); height: auto; aspect-ratio: 1; align-self: center; flex: none; pointer-events: none; }
-.home-gap-text { font-size: 1.05rem; line-height: 1.45; }
-@media (min-width: 640px) { .home-gap { flex-direction: row; align-items: center; } .home-gap .mini-board { width: 240px; align-self: auto; } }
+.home-gap-text { font-size: 1.05rem; line-height: 1.5; padding: 0 2px 2px; }
+@media (min-width: 640px) { a.card.home-gap { flex-direction: row; align-items: center; gap: 28px; } .home-gap .mini-board { width: 240px; align-self: auto; } }
+.home-empty { display: flex; align-items: center; gap: 14px; padding: 16px 18px; }
+.home-empty-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .home-activity { overflow-x: auto; }
 .heatmap { display: flex; gap: 4px; }
 .heatmap-col { display: flex; flex-direction: column; gap: 4px; }
@@ -1101,3 +1077,22 @@ table.explorer tr.move-detail table.games { font-size: 0.85rem; }
 .rep-paused-mark { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .rep-paused-mark svg { width: 26px; height: 26px; padding: 13px; border-radius: 50%; background: rgba(0, 0, 0, 0.62); color: #fff; box-sizing: content-box; }
 .rep-row .rep-actions .btn { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* --- Stockfish in the statistics table (components/LevelTable.tsx, Éval column) ---------------- */
+.level-table .explorer th.eval-col { text-align: center; }
+.level-table td.eval-col { text-align: center; white-space: nowrap; width: 1%; padding-left: 4px; padding-right: 4px; }
+.level-table td.eval-col .eval { min-height: 0; min-width: 50px; padding: 1px 5px; border-radius: 4px; font-size: 0.82rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.level-table td.eval-col .eval.w { background: #ece9e4; color: #131210; border: 1px solid transparent; }
+.level-table td.eval-col .eval.b { background: #0b0b0b; color: #ece9e4; border: 1px solid #5a5650; }
+.level-table td.eval-col .eval:hover { filter: brightness(1.15); }
+.level-table tr.engine-only td { color: var(--text-2); }
+.level-table tr.engine-only td.count { text-align: right; font-size: 0.8rem; }
+.level-lines .engine-lines { margin: 4px 0 0; padding: 0; border: none; background: none; }
+.level-missing { margin: 4px 0 0; text-align: right; font-size: 0.75rem; }
+/* "Agrandissez votre répertoire !": the hint to swipe on touch screens, the buttons with a mouse. */
+.gap-deck-foot { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: -4px; }
+.gap-deck-buttons { display: none; gap: 6px; }
+@media (hover: hover) and (pointer: fine) {
+  .gap-deck-hint { display: none; }
+  .gap-deck-buttons { display: inline-flex; }
+}

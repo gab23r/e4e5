@@ -1,4 +1,5 @@
 import { formatScore, type Color, type EngineLine, type PlayedMove } from '@e4e5/core';
+import type { ReactNode } from 'react';
 import { t } from '../i18n';
 
 /** On/off button of the engine, next to the board navigation. */
@@ -13,6 +14,7 @@ export function EngineLines({
   maxDepth,
   firstMoveNumber,
   onPlay,
+  note,
 }: {
   enabled: boolean;
   lines: EngineLine[];
@@ -21,6 +23,8 @@ export function EngineLines({
   /** Ply count of the analysed position (for move numbers). */
   firstMoveNumber: number;
   onPlay: (moves: PlayedMove[]) => void;
+  /** A short note on the depth line, before it (e.g. no Lichess statistics here). */
+  note?: ReactNode;
 }) {
   if (!enabled) return null;
   // Always 3 rows of one line each, so the block keeps the same height while the engine thinks.
@@ -50,7 +54,11 @@ export function EngineLines({
           <span className="pv muted">{i === 0 && lines.length === 0 ? t('Stockfish réfléchit…', 'Stockfish is thinking…') : ''}</span>
         </div>
       ))}
-      <div className="engine-depth muted">Stockfish 19 · {t('profondeur', 'depth')} {depth}/{maxDepth}</div>
+      <div className="engine-depth muted">
+        {note}
+        {note && ' · '}
+        Stockfish 19 · {t('profondeur', 'depth')} {depth}/{maxDepth}
+      </div>
     </div>
   );
 }

@@ -13,12 +13,12 @@ import type { DropTarget } from '../components/useMoveDrag';
 import { MoveChips } from '../components/MoveChips';
 import { MoveActionsDialog } from '../components/MoveActionsDialog';
 import { OUTLINE_EXTRA, type ArrowKind } from '../components/arrows';
-import { EngineLines, EvalBar } from '../components/EnginePanel';
-import { useEngine } from '../engine/useEngine';
+import { EvalBar } from '../components/EnginePanel';
+import { useTableEngine } from '../engine/useEngine';
 import { Board } from '../components/Board';
 import { MOVE_NAGS, moveNag, San } from '../components/Nag';
 import { ExplorerPanel } from '../components/ExplorerPanel';
-import { AnalysisToggle, ToolCards, useAnalysisToggle } from '../components/ToolCards';
+import { AnalysisToggle, useAnalysisToggle } from '../components/ToolCards';
 import { explorerParams, rangeLabel, useSettings } from '../settings';
 import { LEVEL_STEPS, topLevelMove, useBestMoves, useLevelDepth } from '../components/BestMoves';
 import { Suggestions } from '../components/Suggestions';
@@ -365,11 +365,11 @@ export function RepertoireEditor({ me }: { me: Me }) {
 
   // One button for the analysis (on for the browser session only): Lichess at my level (on the
   // opponent's turn, each of its moves scored from the search after it; its box follows the
-  // likely lines or not) and Stockfish both run, in ToolCards.
+  // likely lines or not) and Stockfish both run, in one table (Éval column).
   const [analysisOn, toggleAnalysis] = useAnalysisToggle();
   const levelOn = analysisOn;
   const engineOn = analysisOn;
-  const engine = useEngine(fen, engineOn);
+  const engine = useTableEngine(fen, engineOn);
   const [levelDepth, onDepth] = useLevelDepth();
   const depth = levelOn ? levelDepth : 0;
   const myTurn = rep.isMyTurn(fen);
@@ -550,49 +550,32 @@ export function RepertoireEditor({ me }: { me: Me }) {
             <Icon name="chevron" size={26} />
           </button>
         </div>
-        {/* The two tools in swipeable cards, one in view at a time (ToolCards). */}
+        {/* The analysis: the Lichess moves at my level with Stockfish's evaluation (Éval column). */}
         {analysisOn && (
-        <ToolCards
-          engine={
-            (
-              <EngineLines
-                enabled={engineOn}
-                lines={engine.lines}
-                depth={engine.depth}
-                maxDepth={engine.maxDepth}
-                firstMoveNumber={ply}
-                onPlay={playMoves}
-              />
-            )
-          }
-          level={
-            (
-            <ExplorerPanel
-              fen={fen}
-              color={rep.color}
-              inRep={(uci) => rep.has(fen, uci)}
-              nagsOf={(uci) => rep.movesAt(fen).find((m) => m.uci === uci)?.nags}
-              stats={explorer.data}
-              error={explorer.error}
-              loading={explorer.isLoading}
-              onPick={play}
-              isMissing={(uci) => missingHere.has(uci)}
-              firstMoveNumber={ply}
-              onPlay={playMoves}
-              level={{
-                data: level.data,
-                loading: level.isLoading,
-                error: level.error,
-                depth,
-                maxDepth: LEVEL_STEPS,
-                onDepth,
-                myTurn,
-                range: rangeLabel(ex.ratings),
-                engineBest: engineOn ? engine.lines[0]?.pv[0]?.uci : undefined,
-              }}
-            />
-            )
-          }
+        <ExplorerPanel
+          fen={fen}
+          color={rep.color}
+          inRep={(uci) => rep.has(fen, uci)}
+          nagsOf={(uci) => rep.movesAt(fen).find((m) => m.uci === uci)?.nags}
+          stats={explorer.data}
+          error={explorer.error}
+          loading={explorer.isLoading}
+          onPick={play}
+          isMissing={(uci) => missingHere.has(uci)}
+          firstMoveNumber={ply}
+          onPlay={playMoves}
+          level={{
+            data: level.data,
+            loading: level.isLoading,
+            error: level.error,
+            depth,
+            maxDepth: LEVEL_STEPS,
+            onDepth,
+            myTurn,
+            range: rangeLabel(ex.ratings),
+            engineBest: engineOn ? engine.lines[0]?.pv[0]?.uci : undefined,
+          }}
+          engine={{ byMove: engine.byMove, best: engine.lines[0], lines: engine.lines, depth: engine.depth, maxDepth: engine.maxDepth, onShown: engine.onShown }}
         />
         )}
       </div>

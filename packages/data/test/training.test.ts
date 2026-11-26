@@ -3,7 +3,7 @@ import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createChapter, createRepertoire, getChapter, listCards, makeDue, recordAnswer, reviewNow, saveLine, type Db } from '../src/index.js';
+import { createChapter, createRepertoire, getChapter, listCards, makeDue, recordAnswer, reviewNow, saveLine, trainingErrors, type Db } from '../src/index.js';
 import * as schema from '../src/schema.js';
 import { reviewLog, users } from '../src/schema.js';
 
@@ -31,6 +31,18 @@ beforeEach(async () => {
 });
 
 describe('training', () => {
+  it('lists the training mistakes until answered right', async () => {
+    const t0 = Date.now() - 10_000;
+    await recordAnswer(db, 'u1', repId, { fen, uci: 'g1f3', grade: 'again', id: 'answer-e1', reviewedAt: t0, mode: 'test' });
+    expect(await trainingErrors(db, 'u1', t0 - 1000)).toMatchObject([{ repertoireId: repId, fen, uci: 'g1f3', mode: 'test', reviewedAt: t0 }]);
+    expect(await trainingErrors(db, 'u1', t0 + 1)).toEqual([]);
+    expect(await trainingErrors(db, 'u2', t0 - 1000)).toEqual([]);
+    await recordAnswer(db, 'u1', repId, { fen, uci: 'g1f3', grade: 'good', id: 'answer-e2', reviewedAt: t0 + 1000, mode: 'review' });
+    expect(await trainingErrors(db, 'u1', t0 - 1000)).toEqual([]);
+    await recordAnswer(db, 'u1', repId, { fen, uci: 'g1f3', grade: 'again', id: 'answer-e3', reviewedAt: t0 + 2000 });
+    expect(await trainingErrors(db, 'u1', t0 - 1000)).toMatchObject([{ mode: 'review', reviewedAt: t0 + 2000 }]);
+  });
+
   it('records an answer and schedules the move card', async () => {
     const at = Date.now() - 60_000;
     const card = await recordAnswer(db, 'u1', repId, { fen, uci: 'g1f3', grade: 'good', id: 'answer-0001', reviewedAt: at });

@@ -12,7 +12,11 @@ interface Search {
   fen: string;
   multipv: number;
   depth: number;
+  /** Only these moves (UCI) searched, one line each with `multipv` as many. */
+  searchmoves?: string[];
   onLine: (line: EngineLine) => void;
+  /** The search reached its depth (not when stopped for another one). */
+  onDone?: () => void;
 }
 
 class Engine {
@@ -44,20 +48,21 @@ class Engine {
   }
 
   private onBestMove() {
+    const done = this.current && !this.stopping ? this.current.onDone : undefined;
     this.current = null;
     this.stopping = false;
     if (this.pending) {
       const next = this.pending;
       this.pending = null;
       this.start(next);
-    }
+    } else done?.();
   }
 
   private start(s: Search) {
     this.current = s;
     this.send(`setoption name MultiPV value ${s.multipv}`);
     this.send(`position fen ${uciFen(s.fen)}`);
-    this.send(`go depth ${s.depth}`);
+    this.send(`go depth ${s.depth}${s.searchmoves?.length ? ` searchmoves ${s.searchmoves.join(' ')}` : ''}`);
   }
 
   /** Analyses `fen`; replaces any running search. */
