@@ -185,7 +185,8 @@ export function ReviewMode({
   newPerDay: number;
   /** All unseen positions are available (e.g. training a chosen subtree). */
   noNewLimit?: boolean;
-  onReview: (source: Source, fen: string, uci: string, grade: Grade) => void;
+  /** `played`: the wrong moves played before (UCI, in order). */
+  onReview: (source: Source, fen: string, uci: string, grade: Grade, played?: string[]) => void;
   onCounts: (c: { dueLines: number; freshLines: number; reviewed: number; asked: number; firstTry: number }) => void;
   /** Shown when nothing is left to review. */
   idle: React.ReactNode;
@@ -411,7 +412,7 @@ export function ReviewMode({
     return { next: first ? question(lineStart(first)) : null, end };
   };
 
-  const record = (q: Question, outcome: Outcome) => {
+  const record = (q: Question, outcome: Outcome, wrong?: string[]) => {
     line.current.questions.push(q);
     line.current.results.push(trailResult(outcome));
     // After an alternative (right too: the move asked could not be guessed, then shown): no
@@ -423,7 +424,7 @@ export function ReviewMode({
     // right answer leaves its schedule unchanged. Due soon: recorded, so it does not come back alone.
     const card = latest(q.source).cardOf(q.target.fen, q.expected.uci);
     const bonus = card !== undefined && Date.parse(card.due) > Date.now() + SOON_MS;
-    if (!(bonus && right)) onReview(q.source, q.target.fen, q.expected.uci, grade);
+    if (!(bonus && right)) onReview(q.source, q.target.fen, q.expected.uci, grade, wrong);
     setStats((s) => ({
       reviewed: s.reviewed + 1,
       asked: s.asked + (outcome === 'new' ? 0 : 1),
@@ -470,7 +471,7 @@ export function ReviewMode({
     return first ? question(lineStart(first)) : null;
   };
 
-  const onAnswered = (q: Question, played: RepMove, outcome: Outcome) => {
+  const onAnswered = (q: Question, played: RepMove, outcome: Outcome, wrong?: string[]) => {
     // A line replayed from the trail: its next question as played then (nothing recorded); at its
     // end, after the pause of a line's end, the next line of the trail (then the training).
     if (q.replay !== undefined) {
@@ -483,7 +484,7 @@ export function ReviewMode({
       }, LINE_END_MS);
       return;
     }
-    record(q, outcome);
+    record(q, outcome, wrong);
     const { next, end } = nextAfter(q, played);
     if (next?.lead) return ask(next);
     closeLine();
@@ -623,7 +624,7 @@ export function ReviewMode({
           )}
           {onTest && sources.some((s) => s.positions.length > 0) && (
             <button className={queue.unseenLines > 0 ? '' : 'primary'} onClick={onTest} title={t('L’adversaire joue les coups les plus fréquents à votre niveau', 'The opponent plays the most frequent moves at your level')}>
-              {t('Se tester', 'Test yourself')}
+              {t('Jouer une partie', 'Play a game')}
             </button>
           )}
         </div>
@@ -638,7 +639,7 @@ export function ReviewMode({
       lineDone={lineDone}
       question={current}
       // A new move to learn: another new move of mine played is learnt instead of the one asked.
-      onAnswered={(played, outcome) => onAnswered(played.uci === current.expected.uci ? current : { ...current, expected: played }, played, outcome)}
+      onAnswered={(played, outcome, wrong) => onAnswered(played.uci === current.expected.uci ? current : { ...current, expected: played }, played, outcome, wrong)}
       onSkip={() => onSkip(current)}
       onAlternative={(move) => onAlternative(current, move)}
       onBack={onBack}
@@ -700,7 +701,8 @@ function Drill({
   /** Changes with each question. Not used as a React key: the board must stay mounted. */
   round: number;
   question: Question;
-  onAnswered: (played: RepMove, outcome: Outcome) => void;
+  /** `wrong`: the wrong moves played before (UCI, in order). */
+  onAnswered: (played: RepMove, outcome: Outcome, wrong: string[]) => void;
   /** Another of my moves played (an alternative): right, the move asked is then shown. */
   onAlternative: (move: Pick<RepMove, 'uci'>) => void;
   /** Swipe to the left on the bar under the board: the next question. */
@@ -744,6 +746,8 @@ function Drill({
     /** 1: the piece to move is shown. */
     hinted: false,
     played: null as RepMove | null,
+    /** Wrong moves played (UCI, in order): recorded with the answer. */
+    wrong: [] as string[],
   });
   const [state, setState] = useState(fresh);
   /** Where the quiz's line starts (ply): set when jumping to another line, kept while following it. */
@@ -754,7 +758,7 @@ function Drill({
     if (!lead) lineFrom.current = Math.max(0, plies - REPLAYED_PLIES);
     setState(current);
   }
-  const { replied, shown, mistakes, revealed, retries, alternative, pausedMove, knownMove, hinted, played } = current;
+  const { replied, shown, mistakes, revealed, retries, alternative, pausedMove, knownMove, hinted, played, wrong } = current;
   const update = (patch: Partial<typeof current>) => setState((s) => ({ ...s, ...patch }));
   const answers = source.rep.movesAt(target.fen);
   const elsewhere = useMyMovesHere(target.fen, source.color);
@@ -785,7 +789,7 @@ function Drill({
       const otherNew = newHere.find((m) => m.uci === uci);
       if (otherNew) {
         update({ played: otherNew });
-        onAnswered(otherNew, outcome(hinted));
+        onAnswered(otherNew, outcome(hinted), wrong);
         return;
       }
       const learnt = learntHere.find((m) => m.uci === uci);
@@ -808,19 +812,19 @@ function Drill({
         update({ retries: retries + 1, pausedMove: onPause, knownMove: null });
         return 'retry';
       }
-      update({ mistakes: mistakes + 1, revealed: revealed || mistakes + 1 >= 2 });
+      update({ mistakes: mistakes + 1, revealed: revealed || mistakes + 1 >= 2, wrong: [...wrong, uci] });
       return false;
     }
     update({ played: expected });
     // New or helped: asked again soon. Right first time, or after an alternative: good.
-    onAnswered(expected, alternative && !isNew && mistakes === 0 && !hinted ? 'alternative' : outcome(hinted));
+    onAnswered(expected, alternative && !isNew && mistakes === 0 && !hinted ? 'alternative' : outcome(hinted), wrong);
   };
 
   /** One button: first the piece to move, then the solution (the move is played, helped). */
   const hint = () => {
     if (!hinted && !revealed) return update({ hinted: true });
     update({ played: expected });
-    onAnswered(expected, outcome(true));
+    onAnswered(expected, outcome(true), wrong);
   };
 
   /** The moves on the board, from the start. */

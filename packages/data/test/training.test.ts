@@ -43,6 +43,15 @@ describe('training', () => {
     expect(await trainingErrors(db, 'u1', t0 - 1000)).toMatchObject([{ mode: 'review', reviewedAt: t0 + 2000 }]);
   });
 
+  it('keeps the wrong moves played with a training mistake', async () => {
+    const t0 = Date.now() - 10_000;
+    await recordAnswer(db, 'u1', repId, { fen, uci: 'g1f3', grade: 'again', id: 'answer-p1', reviewedAt: t0, played: ['f1c4', 'd2d4'] });
+    expect(await trainingErrors(db, 'u1', t0 - 1000)).toMatchObject([{ uci: 'g1f3', played: ['f1c4', 'd2d4'] }]);
+    // None played (helped at once, or recorded before they were): an empty list.
+    await recordAnswer(db, 'u1', repId, { fen, uci: 'g1f3', grade: 'again', id: 'answer-p2', reviewedAt: t0 + 1000 });
+    expect(await trainingErrors(db, 'u1', t0 - 1000)).toMatchObject([{ played: [] }]);
+  });
+
   it('records an answer and schedules the move card', async () => {
     const at = Date.now() - 60_000;
     const card = await recordAnswer(db, 'u1', repId, { fen, uci: 'g1f3', grade: 'good', id: 'answer-0001', reviewedAt: at });

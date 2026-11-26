@@ -24,6 +24,8 @@ export interface PendingReview {
   reviewedAt: number;
   /** Réviser or Se tester (absent in answers queued before the modes were recorded). */
   mode?: TrainingMode;
+  /** Wrong moves played before (UCI, in order). */
+  played?: string[];
 }
 
 // Formerly 'tabiya-outbox' (the app's former name): moved once, before the first read.
@@ -119,7 +121,7 @@ export async function flushReviews() {
     const q = await load();
     for (let item = mine(q)[0]; item; item = mine(q)[0]) {
       try {
-        const card = await api.review(item.repertoireId, { fen: item.fen, uci: item.uci, grade: item.grade, id: item.id, reviewedAt: item.reviewedAt, mode: item.mode });
+        const card = await api.review(item.repertoireId, { fen: item.fen, uci: item.uci, grade: item.grade, id: item.id, reviewedAt: item.reviewedAt, mode: item.mode, played: item.played });
         q.splice(q.indexOf(item), 1);
         // The server's card, unless the move was answered again since (that answer is still queued),
         // or it is the one computed on the device (the usual case: no new render while training).

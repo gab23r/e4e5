@@ -324,7 +324,11 @@ kbd { display: inline-block; min-width: 18px; padding: 0 4px; margin: 0 1px; bor
 .import-summary strong { color: var(--text); }
 .rep-toolbar .tabs .count, .section-title .count { color: var(--muted); font-weight: 600; margin-left: 2px; }
 .rep-toolbar .tabs .dot { width: 10px; height: 10px; }
-.rep-paused-filter { display: flex; align-items: center; gap: 8px; margin-left: auto; color: var(--text-2); font-size: 0.87rem; cursor: pointer; }
+.rep-paused-filter { display: flex; flex: none; align-items: center; gap: 4px; margin-left: auto; color: var(--text-2); font-size: 0.87rem; font-weight: 600; cursor: pointer; }
+.rep-paused-filter .switch-toggle { margin-right: 2px; }
+/* The colour tabs and the paused filter on one row: the tabs share what is left. */
+.rep-toolbar .tabs { flex: 1 1 0; min-width: 0; }
+.rep-toolbar .tabs button { flex: 1 1 auto; min-width: 0; padding-left: 8px; padding-right: 8px; white-space: nowrap; }
 .rep-results { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; margin: 10px 0 0; }
 .rep-list { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .rep-row { display: flex; align-items: stretch; gap: 14px; padding: 10px; border-top: 1px solid var(--border); cursor: pointer; transition: background 0.12s; }
@@ -965,17 +969,16 @@ table.explorer tr.move-detail table.games { font-size: 0.85rem; }
 .path-clip.cut-left::before { left: 0; padding-right: 18px; background: linear-gradient(to right, var(--surface) 55%, transparent); }
 .path-clip.cut-right::after { right: 0; padding-left: 18px; background: linear-gradient(to left, var(--surface) 55%, transparent); }
 
-/* --- Training hub (training/TrainingHub.tsx) -------------------------------------------------- */
-.training-hub { gap: 20px; }
-.hub-scope { display: flex; flex-direction: column; gap: 4px; max-width: 420px; }
-.mode-cards { display: grid; gap: 10px; grid-template-columns: 1fr; }
-@media (min-width: 900px) { .mode-cards { grid-template-columns: repeat(3, 1fr); } }
+/* --- Mode cards (home: play against…) --------------------------------------------------------- */
 .mode-card { display: flex; align-items: center; gap: 14px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); transition: background 0.12s, border-color 0.12s; }
 .mode-card:hover { text-decoration: none; background: var(--surface-2); }
 .mode-card.primary { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
 .mode-card.disabled { opacity: 0.5; cursor: default; }
 .mode-card > svg:last-child { color: var(--muted); flex: none; }
 .mode-icon { flex: none; display: grid; place-items: center; width: 46px; height: 46px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.bot-avatar { flex: none; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface-3); }
+.mode-hint:has(.bot-avatar) { display: flex; align-items: center; gap: 10px; }
+.opponent-elo { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); font-size: 0.82rem; font-weight: 700; }
 .mode-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .mode-text strong { font-size: 1.05rem; }
 

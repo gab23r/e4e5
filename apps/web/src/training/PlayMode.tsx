@@ -22,9 +22,8 @@ const NEXT_LINE_MS = 700;
 type Phase = 'opponent' | 'ask' | 'end';
 
 /**
- * The repertoires of one colour, tested together: the cards are shared (a move learnt is learnt
- * in every repertoire having it), so a line goes on in whichever repertoire its sequel was
- * learnt (1. e4 e5 2. Nf3 learnt in the Scotch also stands in the Philidor and Petrov ones).
+ * The repertoires of one colour, played together: a line goes on in whichever repertoire has its
+ * sequel (1. e4 e5 2. Nf3 of the Scotch also stands in the Philidor and Petrov ones).
  */
 interface Side {
   id: string;
@@ -32,56 +31,23 @@ interface Side {
   /** Every move of these repertoires (one per position and move). */
   rep: Repertoire;
   positions: TrainingPosition[];
-  /** One of my moves learnt here. */
-  known: (fen: string) => boolean;
   pausedAt: (fen: string) => RepMove[];
   cardOf: Source['cardOf'];
   /** The repertoire a move of mine is recorded in (the first having it). */
   sourceOf: (fen: string, uci: string) => Source;
-  /**
-   * Expected number of my mistakes from `fen` on, along what can be tested: the sum, over the
-   * positions of mine learnt there, of the chance of missing them today (how hard the line is).
-   */
-  mistakesFrom: (fen: string) => number;
 }
 
 function sideOf(color: Color, group: Source[], rep: Repertoire): Side {
   const positions = new Map<string, TrainingPosition>();
   for (const s of group) for (const p of s.positions) if (!positions.has(p.fen)) positions.set(p.fen, p);
-  const known = (fen: string) => group.some((s) => !!s.positionCard(fen));
-  /** Chance of missing a position today: any of my moves is accepted, so the best known one counts. */
-  const missChance = (fen: string) => 1 - Math.max(0, ...rep.movesAt(fen).map((m) => group[0]!.cardOf(fen, m.uci)?.recall ?? 0));
-  const counted = new Map<string, number>();
-  const mistakesFrom = (fen: string) => {
-    let n = counted.get(fen);
-    if (n !== undefined) return n;
-    // The positions reached by my moves and the replies leading to a known position (each
-    // counted once, transpositions included).
-    const seen = new Set<string>();
-    const stack = [fen];
-    n = 0;
-    while (stack.length) {
-      const f = stack.pop()!;
-      if (seen.has(f)) continue;
-      seen.add(f);
-      const mine = rep.isMyTurn(f);
-      if (mine && !known(f)) continue;
-      if (mine) n += missChance(f);
-      for (const m of rep.movesAt(f)) if (mine || known(m.toFen)) stack.push(m.toFen);
-    }
-    counted.set(fen, n);
-    return n;
-  };
   return {
     id: `side:${color}`,
     color,
     rep,
     positions: [...positions.values()],
-    known,
     pausedAt: (fen) => group.flatMap((s) => s.pausedAt(fen)),
     cardOf: (fen, uci) => group[0]!.cardOf(fen, uci),
     sourceOf: (fen, uci) => group.find((s) => s.rep.has(fen, uci)) ?? group[0]!,
-    mistakesFrom,
   };
 }
 
@@ -111,6 +77,8 @@ interface LineState {
   revealed: boolean;
   /** The pieces to move are shown (Indice). */
   hinted: boolean;
+  /** Wrong moves played in this position (UCI, in order): recorded with the answer. */
+  wrong?: string[];
 }
 
 /** Score of the session: lines played, my moves, asked (learnt) and right first time. */
@@ -128,11 +96,11 @@ const plyOf = (fen: string) => {
 };
 
 /**
- * "Se tester": the app plays the opponent, choosing among the repertoire replies with the
- * frequencies of Lichess players at the selected level (smoothed, and raised for the lines with
- * hard positions behind: core replyWeights); I answer with my repertoire moves until
- * the end of the line. Reviews are recorded only when they inform the schedule: mistakes, new
- * positions, and correct answers on due positions.
+ * Playing against a bot of my level ("Jouer contre…"): the app plays the opponent, choosing among
+ * the repertoire replies as often as Lichess players of the selected level play them (their real
+ * frequency); I answer with my repertoire moves until the end of the line, learnt or not. Only
+ * answers on moves already learnt are recorded (they inform the review): mistakes, and right
+ * answers on due moves.
  */
 export function PlayMode({
   sources,
@@ -140,7 +108,6 @@ export function PlayMode({
   speeds,
   ratings,
   onReview,
-  onLearn,
   onScore,
   sessionKey,
 }: {
@@ -148,9 +115,8 @@ export function PlayMode({
   root: string;
   speeds: string[];
   ratings: number[];
-  onReview: (source: Source, fen: string, uci: string, grade: Grade) => void;
-  /** Switch to "Réviser" (offered when nothing is learnt yet). */
-  onLearn?: () => void;
+  /** `played`: the wrong moves played before (UCI, in order). */
+  onReview: (source: Source, fen: string, uci: string, grade: Grade, played?: string[]) => void;
   /** The score of the session (shown in the page header, like the review's). */
   onScore?: (score: PlayScore) => void;
   /** The scope of the session: put aside under this key when the page is left, taken up on return. */
@@ -159,21 +125,13 @@ export function PlayMode({
   const navigate = useNavigate();
   const qc = useQueryClient();
   /**
-   * "Se tester" only covers what is learnt: a position is known once one of my moves there is
-   * learnt. The opponent only plays replies leading to a known position; the line ends when none
-   * does. The repertoires of a colour are tested together (`Side`).
+   * The whole repertoire, whatever is learnt: every line is played to its end. The repertoires of
+   * a colour are played together (`Side`).
    */
   const sides = useSides(sources);
-  const knownReplies = (side: Side, fen: string) => side.rep.movesAt(fen).filter((m) => side.known(m.toFen));
-  /** Where a line goes after a move: opponent to play, my turn, or end of what is known. */
-  const after = (side: Side, fen: string): Phase => {
-    if (side.rep.isMyTurn(fen)) return side.known(fen) ? 'ask' : 'end';
-    return knownReplies(side, fen).length > 0 ? 'opponent' : 'end';
-  };
-  const playable = useMemo(
-    () => sides.filter((s) => after(s, root) !== 'end').map((s) => ({ s, learnt: s.positions.filter((p) => s.known(p.fen)).length })),
-    [sides, root],
-  );
+  /** Where a line goes after a move: opponent to play, my turn, or the end of the line. */
+  const after = (side: Side, fen: string): Phase => (side.rep.movesAt(fen).length === 0 ? 'end' : side.rep.isMyTurn(fen) ? 'ask' : 'opponent');
+  const playable = useMemo(() => sides.filter((s) => after(s, root) !== 'end').map((s) => ({ s, size: Math.max(1, s.positions.length) })), [sides, root]);
   /** The session put aside when the page was left (e.g. for the explorer): the same line, the same score. */
   const [saved] = useState(() => {
     const s = sessionKey ? savedSession<{ line: LineState | null; score: PlayScore }>(sessionKey) : undefined;
@@ -214,10 +172,10 @@ export function PlayMode({
   const startLine = useCallback(() => {
     token.current++;
     if (!playable.length) return setLine(null);
-    // Colours are picked in proportion to what is learnt with them.
-    const total = playable.reduce((n, p) => n + p.learnt, 0);
+    // Colours are picked in proportion to the size of their repertoires.
+    const total = playable.reduce((n, p) => n + p.size, 0);
     let r = Math.random() * total;
-    const side = (playable.find((p) => (r -= p.learnt) < 0) ?? playable[0]!).s;
+    const side = (playable.find((p) => (r -= p.size) < 0) ?? playable[0]!).s;
     setLine({ side, fen: root, history: [], phase: after(side, root), mistakes: 0, revealed: false, hinted: false });
   }, [playable, root]);
 
@@ -235,8 +193,8 @@ export function PlayMode({
     const my = ++token.current;
     const started = Date.now();
     void statsOf(line.fen).then((stats) => {
-      // Real frequency at my level, smoothed, and more often the replies with hard positions behind.
-      const reply = chooseReply(knownReplies(line.side, line.fen), stats, Math.random, { difficulty: (m) => line.side.mistakesFrom(m.toFen) });
+      // As often as the players of my level play it (its real frequency).
+      const reply = chooseReply(line.side.rep.movesAt(line.fen), stats, Math.random, { power: 1 });
       const wait = Math.max(0, REPLY_MS - (Date.now() - started));
       setTimeout(() => {
         if (token.current !== my) return;
@@ -278,24 +236,24 @@ export function PlayMode({
     // A move of mine put on pause, or of another of my repertoires: not a mistake, try again.
     if (!answer && (line.side.pausedAt(line.fen).some((m) => m.uci === uci) || elsewhere(uci))) return 'retry';
     if (!answer) {
-      setLine({ ...line, mistakes: line.mistakes + 1, revealed: line.revealed || line.mistakes + 1 >= 2 });
+      setLine({ ...line, mistakes: line.mistakes + 1, revealed: line.revealed || line.mistakes + 1 >= 2, wrong: [...(line.wrong ?? []), uci] });
       return false;
     }
-    // Any of my moves is accepted; its card is graded (a move not learnt yet, found without
-    // help, is left to the review, where it is shown first).
+    // Any of my moves is accepted. Only a move already learnt is graded: a move not learnt yet is
+    // left to the review (played here, right or wrong, it is not learnt for all that).
     const card = line.side.cardOf(line.fen, answer.uci);
     const outcome = outcomeOf(false, line.mistakes, line.revealed || line.hinted || helped);
     let grade: Grade | null = null;
-    if (outcome !== 'correct') grade = 'again'; // helped or wrong
+    if (card && outcome !== 'correct') grade = 'again'; // helped or wrong
     else if (card && Date.parse(card.due) <= Date.now()) grade = 'good';
-    if (grade) onReview(line.side.sourceOf(line.fen, answer.uci), line.fen, answer.uci, grade);
+    if (grade) onReview(line.side.sourceOf(line.fen, answer.uci), line.fen, answer.uci, grade, line.wrong);
     setScore((s) => ({
       ...s,
       moves: s.moves + 1,
       asked: s.asked + (outcome === 'new' ? 0 : 1),
       clean: s.clean + (outcome === 'correct' ? 1 : 0),
     }));
-    setLine({ ...line, fen: answer.toFen, history: [...line.history, answer], phase: after(line.side, answer.toFen), mistakes: 0, revealed: false, hinted: false });
+    setLine({ ...line, fen: answer.toFen, history: [...line.history, answer], phase: after(line.side, answer.toFen), mistakes: 0, revealed: false, hinted: false, wrong: [] });
   };
 
   /** One button, like the review's: the pieces to move, then the solution (my main move is played, helped). */
@@ -328,14 +286,10 @@ export function PlayMode({
   if (!playable.length) {
     return (
       <div className="panel done">
-        <h3>{t('Rien à tester pour l’instant', 'Nothing to test for now')}</h3>
+        <h3>{t('Aucune ligne à jouer', 'No line to play')}</h3>
         <p className="muted">
-          {t(
-            '« Se tester » porte sur ce que vous avez appris. Apprenez d’abord quelques positions dans « Réviser ».',
-            '“Test yourself” covers what you have learnt. First learn a few positions in “Review”.',
-          )}
+          {t('Ajoutez des coups à vos répertoires (ou reprenez un répertoire en pause) pour jouer vos lignes.', 'Add moves to your repertoires (or resume a paused one) to play your lines.')}
         </p>
-        {onLearn && <button className="primary" onClick={onLearn}>{t('Réviser', 'Review')}</button>}
       </div>
     );
   }

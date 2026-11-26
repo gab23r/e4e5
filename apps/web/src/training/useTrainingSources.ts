@@ -128,8 +128,8 @@ export function useTrainingSources(ids: string[], from: string | null, shorten?:
 
   /** Records an answer: scheduled on the device at once, then recorded in the database. */
   const review = {
-    mutate: ({ source, fen, uci, grade, mode }: { source: Source; fen: string; uci: string; grade: Grade; mode: TrainingMode }) =>
-      recordReview(qc, source.cardOf(fen, uci), { repertoireId: source.id, fen, uci, grade, mode }),
+    mutate: ({ source, fen, uci, grade, mode, played }: { source: Source; fen: string; uci: string; grade: Grade; mode: TrainingMode; played?: string[] }) =>
+      recordReview(qc, source.cardOf(fen, uci), { repertoireId: source.id, fen, uci, grade, mode, ...(played?.length ? { played } : {}) }),
   };
 
   return { sources, loading, review };

@@ -57,6 +57,8 @@ export const DIFFICULTY_BONUS = 0.5;
 export interface ReplyWeighting {
   /** Expected number of my mistakes behind a reply (its difficulty); none: not counted. */
   difficulty?: (reply: RepMove) => number;
+  /** Weight ∝ games^power (default FREQUENCY_POWER, smoothed; 1: the real frequency). */
+  power?: number;
 }
 
 /**
@@ -65,12 +67,12 @@ export interface ReplyWeighting {
  * them (`DIFFICULTY_BONUS`). Replies missing from the statistics count 2% of the known games
  * (before smoothing), so they are played sometimes. Without statistics: main line 2, others 1.
  */
-export function replyWeights(replies: RepMove[], stats: ExplorerResponse | null | undefined, { difficulty }: ReplyWeighting = {}): number[] {
+export function replyWeights(replies: RepMove[], stats: ExplorerResponse | null | undefined, { difficulty, power = FREQUENCY_POWER }: ReplyWeighting = {}): number[] {
   const games = new Map((stats?.moves ?? []).map((m) => [m.uci, totalGames(m)]));
   const known = replies.map((m) => games.get(m.uci) ?? 0);
   const sum = known.reduce((a, b) => a + b, 0);
   const floor = Math.max(1, 0.02 * sum);
-  const base = sum === 0 ? replies.map((m) => (m.isMain ? 2 : 1)) : known.map((g) => (g > 0 ? g : floor) ** FREQUENCY_POWER);
+  const base = sum === 0 ? replies.map((m) => (m.isMain ? 2 : 1)) : known.map((g) => (g > 0 ? g : floor) ** power);
   return base.map((w, i) => w * (difficulty ? 1 + DIFFICULTY_BONUS * Math.log2(1 + Math.max(0, difficulty(replies[i]!))) : 1));
 }
 

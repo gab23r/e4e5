@@ -193,8 +193,8 @@ export function Settings({ me }: { me: Me }) {
             <strong>{t('Temps pour répondre', 'Time to answer')}</strong>
             <div className="hint">
               {t(
-                'En mode « Se tester », pour chaque coup à jouer (pas en révision). Temps écoulé : compté comme une erreur, la réponse est montrée.',
-                'In “Test yourself” mode, for each move to play (not in review). Time up: counted as a mistake, the answer is shown.',
+                'En partie contre l’adversaire (Accueil › Jouer contre…), pour chaque coup à jouer (pas en révision). Temps écoulé : compté comme une erreur, la réponse est montrée.',
+                'In a game against the opponent (Home › Play against…), for each move to play (not in review). Time up: counted as a mistake, the answer is shown.',
               )}
             </div>
           </div>

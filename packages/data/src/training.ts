@@ -49,6 +49,8 @@ export interface Answer {
   reviewedAt?: number;
   /** Training mode: Réviser or Se tester. */
   mode?: 'review' | 'test';
+  /** Wrong moves played before (UCI, in order). */
+  played?: string[];
 }
 
 /** My moves in a position, in the chapters of a repertoire (first chapter first). */
@@ -67,7 +69,7 @@ async function movesInRepertoire(db: Db, repertoireId: string, fen: string) {
  */
 export async function recordAnswer(db: Db, userId: string, repertoireId: string, answer: Answer) {
   const rep = await ownRepertoire(db, userId, repertoireId);
-  const { fen, uci, grade, id, reviewedAt, mode } = answer;
+  const { fen, uci, grade, id, reviewedAt, mode, played } = answer;
   const chapter = (await movesInRepertoire(db, rep.id, fen)).find((m) => m.uci === uci)?.chapterId;
   if (turnOf(fen) !== rep.color || !chapter) {
     throw new DataError(400, 'Pas un coup à entraîner dans ce répertoire');
@@ -81,7 +83,7 @@ export async function recordAnswer(db: Db, userId: string, repertoireId: string,
   // Recorded once per id: the same answer recorded again leaves the card as it is.
   const logged = await db
     .insert(reviewLog)
-    .values({ chapterId: chapter, fen, uci, grade, isNew: !existing, reviewedAt: at, clientId: id ?? null, mode: mode ?? null })
+    .values({ chapterId: chapter, fen, uci, grade, isNew: !existing, reviewedAt: at, clientId: id ?? null, mode: mode ?? null, played: played?.length ? played : null })
     .onConflictDoNothing({ target: reviewLog.clientId })
     .returning({ id: reviewLog.id });
   if (!logged.length && existing) return publicCard(existing, now);
@@ -138,6 +140,7 @@ export async function trainingErrors(db: Db, userId: string, since: number) {
       grade: reviewLog.grade,
       reviewedAt: reviewLog.reviewedAt,
       mode: reviewLog.mode,
+      played: reviewLog.played,
     })
     .from(reviewLog)
     .innerJoin(chapters, eq(chapters.id, reviewLog.chapterId))
@@ -150,7 +153,7 @@ export async function trainingErrors(db: Db, userId: string, since: number) {
   return [...last.values()]
     .filter((r) => r.grade === 'again')
     .reverse()
-    .map(({ grade: _, ...r }) => ({ ...r, mode: r.mode ?? 'review', reviewedAt: r.reviewedAt.getTime() }));
+    .map(({ grade: _, ...r }) => ({ ...r, mode: r.mode ?? 'review', played: r.played ?? [], reviewedAt: r.reviewedAt.getTime() }));
 }
 
 /** My answers since a time (ms), any mode: when, and right or not (the activity of the home page). */

@@ -12,15 +12,16 @@ import { lineText } from '../training/common';
 import { PlayMode, type PlayScore } from '../training/PlayMode';
 import { Progress } from '../training/Progress';
 import { ReviewMode } from '../training/ReviewMode';
-import { TrainingHub } from '../training/TrainingHub';
+import { useOpponent } from '../opponent';
+import { BotAvatar } from '../components/BotAvatar';
 import { useTrainingSources, type Source } from '../training/useTrainingSources';
 
 type Mode = 'review' | 'play';
 
 /**
  * Training page, for one repertoire (/r/:id/train, optionally ?chapter=<id> for one of its
- * chapters, ?from=<fen> for a subtree) or all of them (/train). Without ?mode=, the choice of the
- * mode (TrainingHub); ?mode=review: spaced-repetition review; ?mode=test: playing lines against the app.
+ * chapters, ?from=<fen> for a subtree) or all of them (/train). The spaced-repetition review by
+ * default; ?mode=test: playing lines against a fictional opponent of my level (from the home page).
  */
 export function Training({ me }: { me: Me }) {
   const { id } = useParams();
@@ -70,15 +71,9 @@ export function Training({ me }: { me: Me }) {
   const ex = explorerParams(me, speed, range);
   // The session is kept while the page is left (explorer, other mode), per scope.
   const sessionKey = `${ids.join()}|${chapter ?? ''}|${from ?? ''}`;
-  // No mode: the choice of the mode (hub); ?mode=review / ?mode=test: a session.
-  const modeParam = params.get('mode');
-  const mode: Mode | null = modeParam === 'test' ? 'play' : modeParam === 'review' ? 'review' : null;
-  /** The address of a session of this mode, same repertoires (and chapter, part). */
-  const sessionHref = (m: 'review' | 'test') => {
-    const q = new URLSearchParams(params);
-    q.set('mode', m);
-    return `${id ? `/r/${id}` : ''}/train?${q}`;
-  };
+  // The review, unless ?mode=test.
+  const mode: Mode = params.get('mode') === 'test' ? 'play' : 'review';
+  const opponent = useOpponent(me);
   const setMode = (m: Mode) => {
     const q = new URLSearchParams(params);
     q.set('mode', m === 'play' ? 'test' : 'review');
@@ -87,11 +82,10 @@ export function Training({ me }: { me: Me }) {
   const [counts, setCounts] = useState({ dueLines: 0, freshLines: 0, reviewed: 0, asked: 0, firstTry: 0 });
   const onCounts = useCallback((c: typeof counts) => setCounts(c), []);
   const [playScore, setPlayScore] = useState<PlayScore>({ lines: 0, moves: 0, asked: 0, clean: 0 });
-  const onReview = (as: TrainingMode) => (source: Source, fen: string, uci: string, grade: Grade) => review.mutate({ source, fen, uci, grade, mode: as });
+  const onReview = (as: TrainingMode) => (source: Source, fen: string, uci: string, grade: Grade, played?: string[]) => review.mutate({ source, fen, uci, grade, mode: as, played });
 
-  // The hub shows at once (its weak points fill in when the repertoires are loaded); a session waits.
-  if (all.isLoading || (mode && (loading || (shortening && gaps.isLoading)))) return <p className="muted">{t('Chargement…', 'Loading…')}</p>;
-  if (id && (mode ? !sources.length : !all.data?.some((r) => r.id === id))) return <p className="error">{t('Impossible de charger le répertoire.', 'Could not load the repertoire.')}</p>;
+  if (all.isLoading || loading || (shortening && gaps.isLoading)) return <p className="muted">{t('Chargement…', 'Loading…')}</p>;
+  if (id && !sources.length) return <p className="error">{t('Impossible de charger le répertoire.', 'Could not load the repertoire.')}</p>;
 
   const fromPath = from && sources[0] ? sources[0].positions.find((p) => p.fen === from)?.path : undefined;
   const title = id ? (all.data?.find((r) => r.id === id)?.name ?? sources[0]?.name ?? '') : t('Tous les répertoires actifs', 'All active repertoires');
@@ -99,12 +93,10 @@ export function Training({ me }: { me: Me }) {
   return (
     <div className="training">
       <PageHeader
-        back={mode ? `${id ? `/r/${id}` : ''}/train${chapter ? `?chapter=${chapter}` : ''}` : id ? `/r/${id}${chapter ? `?chapter=${chapter}` : ''}` : undefined}
-        title={mode === 'review' ? t('Réviser', 'Review') : mode === 'play' ? t('Se tester', 'Test yourself') : t('Entraînement', 'Training')}
+        back={id ? `/r/${id}${chapter ? `?chapter=${chapter}` : ''}` : mode === 'play' ? '/' : undefined}
+        title={mode === 'review' ? t('Réviser', 'Review') : t(`Contre ${opponent.name} (${opponent.elo})`, `Against ${opponent.name} (${opponent.elo})`)}
         subtitle={
-          !mode
-            ? title
-            : mode === 'review'
+          mode === 'review'
             ? `${title} · ${t(`${plural(counts.dueLines, 'ligne', 'lignes')} à revoir`, `${plural(counts.dueLines, 'line', 'lines')} due`)} · ${t(plural(counts.freshLines, 'nouvelle', 'nouvelles'), `${fmt(counts.freshLines)} new`)}${
                 counts.reviewed > 0
                   ? ` · ${t(plural(counts.reviewed, 'réponse', 'réponses'), plural(counts.reviewed, 'answer', 'answers'))}${counts.asked > 0 ? firstTryText(counts.firstTry, counts.asked) : ''}`
@@ -117,10 +109,6 @@ export function Training({ me }: { me: Me }) {
               }`
         }
       />
-      {!mode ? (
-        <TrainingHub id={id} reps={all.data ?? []} summary={summary.data} sources={sources} sessionHref={sessionHref} />
-      ) : (
-      <>
       {from && (
         <p className="muted from">
           {t(
@@ -133,11 +121,12 @@ export function Training({ me }: { me: Me }) {
       {shortening && <ShortenNotice gaps={gaps} colors={[...new Set(sources.map((s) => s.color))]} />}
 
       <p className="muted small-text mode-hint">
+        {mode === 'play' && <BotAvatar name={opponent.name} size={36} />}
         {mode === 'review'
           ? t('Les positions à revoir aujourd’hui, au bon moment pour les retenir.', 'The positions due today, at the right time to remember them.')
           : t(
-              'Sur ce que vous avez appris, sans aide : l’adversaire joue les coups les plus fréquents à votre niveau, comme en partie.',
-              'On what you have learnt, without help: the opponent plays the most frequent moves at your level, as in a game.',
+              `Sur ce que vous avez appris, sans aide, comme en partie : ${opponent.name} joue les coups les plus fréquents des joueurs de votre niveau.`,
+              `On what you have learnt, without help, as in a game: ${opponent.name} plays the most frequent moves of players of your level.`,
             )}
       </p>
 
@@ -163,12 +152,9 @@ export function Training({ me }: { me: Me }) {
           speeds={ex.speeds}
           ratings={ex.ratings}
           onReview={onReview('test')}
-          onLearn={() => setMode('review')}
           onScore={setPlayScore}
           sessionKey={`play|${sessionKey}`}
         />
-      )}
-      </>
       )}
     </div>
   );

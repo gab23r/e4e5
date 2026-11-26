@@ -153,6 +153,8 @@ export const reviewLog = sqliteTable(
     clientId: text('client_id'),
     /** Training mode of the answer: Réviser or Se tester (null: before the modes were recorded). */
     mode: text('mode', { enum: ['review', 'test'] }),
+    /** Wrong moves played before (UCI, in order; null: none, or before they were recorded). */
+    played: text('played', { mode: 'json' }).$type<string[]>(),
   },
   (t) => [index('review_log_chapter_time').on(t.chapterId, t.reviewedAt), uniqueIndex('review_log_client_id').on(t.clientId)],
 );

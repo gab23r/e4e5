@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Gap, type Me, type RepertoireSummary, type ReviewError, type TrainingSummary } from '../api';
+import { BotAvatar } from '../components/BotAvatar';
 import { MiniBoard } from '../components/MiniBoard';
 import { San } from '../components/Nag';
 import { SwipeRow } from '../components/SwipeRow';
@@ -16,6 +17,7 @@ import { moveText } from '../chessText';
 import { fmt, lang, t } from '../i18n';
 import { useTrainingSummary } from '../useTrainingSummary';
 import { useGaps } from '../useGaps';
+import { useOpponent } from '../opponent';
 import { Button, Icon, plural } from '../ui';
 
 const WEEKS = 12;
@@ -53,6 +55,7 @@ export function Home({ me }: { me: Me }) {
   return (
     <div className="home stack">
       <Today name={name} due={due} fresh={fresh} answers={answers.data} loading={!summary.data} />
+      <PlayCard me={me} />
       <ToReview reps={reps.data} summary={summary.data} />
       <div className="home-grid">
         <ErrorDeck reps={byId} />
@@ -104,13 +107,12 @@ function Today({ name, due, fresh, answers, loading }: { name?: string; due: num
             ? t('Calcul de votre journée…', 'Working out your day…')
             : left > 0
               ? todo(due, fresh, 'long')
-              : t('Tout est à jour : testez-vous sur vos lignes.', 'All up to date: test yourself on your lines.')}
+              : t('Tout est à jour : jouez une partie sur vos lignes.', 'All up to date: play a game on your lines.')}
         </p>
         <div className="row">
-          <Button variant="primary" icon="play" to={review ? '/train?mode=review' : '/train?mode=test'}>
-            {review ? t('Continuer l’entraînement', 'Continue training') : t('Se tester', 'Test yourself')}
+          <Button variant="primary" icon="play" to={review ? '/train' : '/train?mode=test'}>
+            {review ? t('Continuer l’entraînement', 'Continue training') : t('Jouer une partie', 'Play a game')}
           </Button>
-          <Button variant="ghost" to="/train">{t('Autres modes', 'Other modes')}</Button>
         </div>
       </div>
       <div className="home-stats">
@@ -124,6 +126,29 @@ function Today({ name, due, fresh, answers, loading }: { name?: string; due: num
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * "Se tester" as a game: against a fictional player of my level (the level of the opening
+ * statistics), who plays the most frequent moves there, on what I have learnt, without help.
+ */
+function PlayCard({ me }: { me: Me }) {
+  const { name, elo } = useOpponent(me);
+  return (
+    <Link to="/train?mode=test" className="mode-card play-card">
+      <BotAvatar name={name} size={56} />
+      <span className="mode-text">
+        <strong>{t(`Jouer contre ${name}`, `Play against ${name}`)} <span className="opponent-elo">{elo}</span></strong>
+        <span className="muted small-text">
+          {t(
+            'Vos lignes, sans aide, comme en partie : les coups les plus fréquents des joueurs de votre niveau.',
+            'Your lines, without help, as in a game: the most frequent moves of players of your level.',
+          )}
+        </span>
+      </span>
+      <Icon name="chevron" size={18} />
+    </Link>
   );
 }
 
@@ -176,8 +201,9 @@ const laterSaved = (key: string): string[] => {
 };
 
 /**
- * A deck of cards shown one at a time, in the given order. Swiped to the right, the item is
- * ignored; to the left, put off until later (this session); then the next one comes.
+ * A deck of cards shown one at a time, in the given order. Swiped to the `dismiss` side, the item
+ * is dismissed (`onIgnore`); with a `laterKey`, to the other side, put off until later (this
+ * session); then the next one comes.
  */
 function Deck<T>({
   title,
@@ -186,6 +212,7 @@ function Deck<T>({
   id,
   laterKey,
   onIgnore,
+  dismiss = { label: t('Ignorer', 'Ignore'), side: 'right' },
   render,
   empty,
 }: {
@@ -195,17 +222,20 @@ function Deck<T>({
   aside?: ReactNode;
   items: T[];
   id: (item: T) => string;
-  /** sessionStorage key of the items put off. */
-  laterKey: string;
+  /** sessionStorage key of the items put off; none: no "later". */
+  laterKey?: string;
   onIgnore: (item: T) => Promise<unknown>;
+  /** The dismissing action: its label and the side it is swiped to. */
+  dismiss?: { label: string; side: 'left' | 'right' };
   render: (item: T) => ReactNode;
 }) {
-  const [later, setLater] = useState<string[]>(() => laterSaved(laterKey));
+  const [later, setLater] = useState<string[]>(() => (laterKey ? laterSaved(laterKey) : []));
   /** Ignored here, hidden at once (until the list is computed again). */
   const [ignored, setIgnored] = useState<Set<string>>(new Set());
   const left = items.filter((x) => !ignored.has(id(x)));
   const item = left.find((x) => !later.includes(id(x)));
   const putOff = (x: T) => {
+    if (!laterKey) return;
     const next = [...later.filter((k) => k !== id(x)), id(x)];
     sessionStorage.setItem(laterKey, JSON.stringify(next));
     setLater(next);
@@ -215,6 +245,8 @@ function Deck<T>({
     await onIgnore(x);
   };
   const putOffCount = left.filter((x) => later.includes(id(x))).length;
+  const dismissSide = (x: T) => ({ label: dismiss.label, action: () => ignore(x) });
+  const laterSide = (x: T) => ({ label: t('Plus tard', 'Later'), action: () => putOff(x) });
   return (
     <section className="stack">
       <div className="home-head">
@@ -223,14 +255,22 @@ function Deck<T>({
       </div>
       {item ? (
         <>
-          <SwipeRow key={id(item)} right={{ label: t('Ignorer', 'Ignore'), action: () => ignore(item) }} left={{ label: t('Plus tard', 'Later'), action: () => putOff(item) }}>
+          <SwipeRow key={id(item)} {...{ [dismiss.side]: dismissSide(item), ...(laterKey ? { [dismiss.side === 'left' ? 'right' : 'left']: laterSide(item) } : {}) }}>
             {render(item)}
           </SwipeRow>
           <div className="gap-deck-foot">
-            <span className="muted small-text gap-deck-hint">{t('Glissez à gauche : plus tard · à droite : ignorer', 'Swipe left: later · right: ignore')}</span>
+            <span className="muted small-text gap-deck-hint">
+              {laterKey
+                ? dismiss.side === 'right'
+                  ? t(`Glissez à gauche : plus tard · à droite : ${dismiss.label.toLowerCase()}`, `Swipe left: later · right: ${dismiss.label.toLowerCase()}`)
+                  : t(`Glissez à gauche : ${dismiss.label.toLowerCase()} · à droite : plus tard`, `Swipe left: ${dismiss.label.toLowerCase()} · right: later`)
+                : dismiss.side === 'left'
+                  ? t(`Glissez à gauche : ${dismiss.label.toLowerCase()}`, `Swipe left: ${dismiss.label.toLowerCase()}`)
+                  : t(`Glissez à droite : ${dismiss.label.toLowerCase()}`, `Swipe right: ${dismiss.label.toLowerCase()}`)}
+            </span>
             <span className="gap-deck-buttons">
-              <Button size="sm" variant="ghost" onClick={() => putOff(item)}>{t('Plus tard', 'Later')}</Button>
-              <Button size="sm" variant="ghost" onClick={() => void ignore(item)}>{t('Ignorer', 'Ignore')}</Button>
+              {laterKey && <Button size="sm" variant="ghost" onClick={() => putOff(item)}>{t('Plus tard', 'Later')}</Button>}
+              <Button size="sm" variant="ghost" onClick={() => void ignore(item)}>{dismiss.label}</Button>
             </span>
           </div>
         </>
@@ -240,7 +280,7 @@ function Deck<T>({
         <p className="muted">
           {t('Plus de position pour l’instant.', 'No more position for now.')}{' '}
           {putOffCount > 0 && (
-            <button type="button" className="link" onClick={() => (sessionStorage.removeItem(laterKey), setLater([]))}>
+            <button type="button" className="link" onClick={() => (laterKey && sessionStorage.removeItem(laterKey), setLater([]))}>
               {t(`Revoir ${plural(putOffCount, 'la position remise', 'les positions remises')} à plus tard`, `See the ${plural(putOffCount, 'position', 'positions')} put off again`)}
             </button>
           )}
@@ -306,7 +346,7 @@ function ErrorDeck({ reps }: { reps: Map<string, RepertoireSummary> }) {
       title={t('Revoir vos erreurs', 'Review your mistakes')}
       items={errors}
       id={errorId}
-      laterKey="e4e5.errorsLater"
+      dismiss={{ label: t('C’est compris', 'Got it'), side: 'left' }}
       onIgnore={async (e) => localStorage.setItem(IGNORED_KEY, JSON.stringify([...ignoredSaved(), errorId(e)].slice(-500)))}
       empty={
         <div className="card home-empty">
@@ -315,7 +355,7 @@ function ErrorDeck({ reps }: { reps: Map<string, RepertoireSummary> }) {
             <strong>{t('Aucune erreur à revoir', 'No mistake to review')}</strong>
             <span className="muted small-text">{t('Les coups manqués en révision ou en test viendront ici.', 'The moves you miss in review or in a test will come here.')}</span>
           </span>
-          <Button size="sm" to="/train?mode=test">{t('Se tester', 'Test yourself')}</Button>
+          <Button size="sm" to="/train?mode=test">{t('Jouer une partie', 'Play a game')}</Button>
         </div>
       }
       render={(e) => <TrainingErrorCard error={e} rep={reps.get(e.repertoireId)} />}
@@ -329,15 +369,38 @@ const whenText = (at: number) => {
   return diff === 0 ? t('aujourd’hui', 'today') : diff === 1 ? t('hier', 'yesterday') : new Date(at).toLocaleDateString(lang, { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
-/** A mistake of my training: the position and the move expected (green); a tap trains it again. */
+/**
+ * A mistake of my training: the position, the moves I played instead (orange) and the move
+ * expected (green); a tap trains it again.
+ */
 function TrainingErrorCard({ error, rep }: { error: ReviewError; rep: RepertoireSummary | undefined }) {
   const to = `/r/${error.repertoireId}/train?${new URLSearchParams({ mode: 'review', from: error.fen })}`;
   const move = error.uci ? playUci(error.fen, error.uci) : null;
+  const wrong = [...new Set(error.played)].filter((u) => u !== error.uci).flatMap((u) => {
+    const m = playUci(error.fen, u);
+    return m ? [{ uci: u, san: m.san }] : [];
+  });
   const mode = error.mode === 'test' ? t('en test', 'in a test') : t('en révision', 'in review');
   return (
     <Link to={to} className="card home-gap" draggable={false}>
-      <MiniBoard fen={error.fen} orientation={error.color} arrows={error.uci ? [{ uci: error.uci, kind: 'repertoire' }] : []} />
+      <MiniBoard
+        fen={error.fen}
+        orientation={error.color}
+        arrows={[...wrong.map((w) => ({ uci: w.uci, kind: 'played' as const })), ...(error.uci ? [{ uci: error.uci, kind: 'repertoire' as const }] : [])]}
+      />
       <span className="home-gap-text">
+        {wrong.length > 0 && (
+          <>
+            {t('Vous avez joué ', 'You played ')}
+            {wrong.map((w, i) => (
+              <span key={w.uci}>
+                {i > 0 && (i === wrong.length - 1 ? t(' puis ', ' then ') : ', ')}
+                <strong className="hole-move"><San san={w.san} /></strong>
+              </span>
+            ))}
+            {' · '}
+          </>
+        )}
         {t(
           <>Manqué {mode} {whenText(error.reviewedAt)} : le coup attendu était <strong>{move ? <San san={move.san} /> : '?'}</strong>. Rejouez-le.</>,
           <>Missed {mode} {whenText(error.reviewedAt)}: the expected move was <strong>{move ? <San san={move.san} /> : '?'}</strong>. Play it again.</>,

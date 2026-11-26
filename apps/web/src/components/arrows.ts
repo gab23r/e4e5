@@ -16,6 +16,7 @@ export const ARROWS = {
   // Same green as the paused move in the list (--rep, faded there too), almost transparent.
   paused: { color: '#5cb380', label: t('en pause, pas entraîné', 'paused, not trained') },
   pausedNext: { color: '#5cb380', label: t('coup suivant, en pause (→)', 'next move, paused (→)') },
+  played: { color: '#f0883e', label: t('coup joué à la place, à l’entraînement', 'move played instead, in training') },
   mistake: { color: '#e5534b', label: t('coup joué à la place du coup préparé', 'move played instead of the prepared move') },
 } as const;
 

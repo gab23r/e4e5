@@ -12,6 +12,8 @@ export interface ReviewError {
   uci: string | null;
   reviewedAt: number;
   mode: TrainingMode;
+  /** The wrong moves played (UCI, in order; empty for answers recorded before they were). */
+  played: string[];
 }
 
 export interface StatsMeta {
@@ -411,7 +413,7 @@ export interface Api {
   pushToLichess: (repertoireId: string, visibility: 'private' | 'unlisted' | 'public') => Promise<PushResult>;
   cards: () => Promise<ReviewCard[]>;
   /** An answer: `id` makes it count once, `reviewedAt` is when it was given. */
-  review: (id: string, answer: { fen: string; uci: string; grade: Grade; id: string; reviewedAt: number; mode?: TrainingMode }) => Promise<ReviewCard>;
+  review: (id: string, answer: { fen: string; uci: string; grade: Grade; id: string; reviewedAt: number; mode?: TrainingMode; played?: string[] }) => Promise<ReviewCard>;
   /** My training mistakes since a time (ms) not answered right since, the latest first. */
   trainingErrors: (since: number) => Promise<ReviewError[]>;
   /** My answers since a time (ms): when, right or not (activity of the home page). */

@@ -111,9 +111,11 @@ export function Repertoires({ me }: { me: Me }) {
             ]}
           />
           {pausedCount > 0 && (
-            <label className="rep-paused-filter">
+            // Compact (switch, pause mark, count) to stay on the row of the colour tabs.
+            <label className="rep-paused-filter" title={t(`Afficher les répertoires en pause (${pausedCount})`, `Show the paused repertoires (${pausedCount})`)}>
               <Switch on={showPaused} onChange={() => setParam('paused', showPaused ? '0' : '1', '1')} label={t('Afficher les répertoires en pause', 'Show the paused repertoires')} />
-              <span>{t(`En pause (${pausedCount})`, `Paused (${pausedCount})`)}</span>
+              <Icon name="pause" size={14} />
+              <span className="count">{pausedCount}</span>
             </label>
           )}
         </div>
@@ -236,7 +238,7 @@ function RepertoireRow({ rep, counts, missing, firstGap }: {
             onChange={() => toggle.mutate()}
             label={rep.active ? t(`Mettre ${rep.name} en pause`, `Pause ${rep.name}`) : t(`Reprendre l’entraînement de ${rep.name}`, `Resume training ${rep.name}`)}
           />
-          <Button size="sm" icon="target" onClick={() => navigate(`/r/${rep.id}/train?mode=test`)}>{t('Se tester', 'Test')}</Button>
+          <Button size="sm" icon="play" onClick={() => navigate(`/r/${rep.id}/train?mode=test`)}>{t('Jouer', 'Play')}</Button>
         </div>
       </div>
     </div>
