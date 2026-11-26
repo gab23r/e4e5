@@ -1,11 +1,10 @@
 /**
  * The chapters of the repertoire open in the editor, above the board, as in a Lichess study: one
- * is open at a time (its moves are on the board), picked in a select; the edit button opens the
- * dialog organising them (order, pause, rename, move, delete, new chapter).
+ * is open at a time (its moves are on the board), picked in a select. "Organiser les chapitres" (menu
+ * of the page) opens the dialog organising them (order, pause, rename, move, delete, new chapter).
  */
 import type { Color } from '@e4e5/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
 import { api, type ChapterInfo, type StoredMove } from '../api';
 import { t } from '../i18n';
 import { Button, plural } from '../ui';
@@ -20,6 +19,8 @@ export function ChapterBar({
   boardFen,
   onSelect,
   onMovedAway,
+  organizing,
+  onOrganize,
 }: {
   repertoireId: string;
   color: Color;
@@ -31,9 +32,11 @@ export function ChapterBar({
   onSelect: (id: string) => void;
   /** The open chapter went to another repertoire. */
   onMovedAway: (repertoireId: string, chapterId: string) => void;
+  /** The dialog organising the chapters is open (asked from the page menu). */
+  organizing: boolean;
+  onOrganize: (open: boolean) => void;
 }) {
   const qc = useQueryClient();
-  const [organizing, setOrganizing] = useState(false);
   const count = new Map<string, number>();
   for (const m of moves) count.set(m.chapterId, (count.get(m.chapterId) ?? 0) + 1);
   /** The repertoire reloaded (awaited), what depends on it recomputed in the background. */
@@ -69,10 +72,8 @@ export function ChapterBar({
       ) : (
         <span className="muted small-text">{t('Ce répertoire n’a pas encore de chapitre.', 'This repertoire has no chapter yet.')}</span>
       )}
-      {chapters.length ? (
-        <Button variant="ghost" icon="pencil" title={t('Modifier les chapitres', 'Edit the chapters')} onClick={() => setOrganizing(true)} />
-      ) : (
-        <Button size="sm" variant="primary" icon="plus" onClick={() => setOrganizing(true)}>{t('Nouveau chapitre', 'New chapter')}</Button>
+      {!chapters.length && (
+        <Button size="sm" variant="primary" icon="plus" onClick={() => onOrganize(true)}>{t('Nouveau chapitre', 'New chapter')}</Button>
       )}
       {change.error && <p className="error small-text">{change.error.message}</p>}
       {organizing && (
@@ -87,7 +88,7 @@ export function ChapterBar({
           create={(name, startFen) => create.mutateAsync({ name, startFen })}
           onSelect={onSelect}
           onMovedAway={onMovedAway}
-          onClose={() => setOrganizing(false)}
+          onClose={() => onOrganize(false)}
         />
       )}
     </div>

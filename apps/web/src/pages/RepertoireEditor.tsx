@@ -49,6 +49,7 @@ export function RepertoireEditor({ me }: { me: Me }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [syncOpen, setSyncOpen] = useState(false);
   const [pushOpen, setPushOpen] = useState(false);
+  const [organizing, setOrganizing] = useState(false);
   /** Move whose comment is being written (id), or null. */
   const [commentEdit, setCommentEdit] = useState<number | null>(null);
   /**
@@ -480,6 +481,7 @@ export function RepertoireEditor({ me }: { me: Me }) {
       )}
       actions={<Button variant="primary" icon="play" to={`/r/${id}/train`}>{t('S’entraîner', 'Train')}</Button>}
       menu={[
+        { label: t('Organiser les chapitres', 'Organise the chapters'), onClick: () => setOrganizing(true) },
         ...(data.lichessStudyId
           ? [
               { label: t('Mettre à jour depuis Lichess', 'Update from Lichess'), onClick: () => setSyncOpen(true) },
@@ -530,6 +532,8 @@ export function RepertoireEditor({ me }: { me: Me }) {
           boardFen={ply > 0 && unsaved.length === 0 ? fen : null}
           onSelect={(c) => selectChapter(c)}
           onMovedAway={(to, c) => navigate(`/r/${to}?chapter=${c}`)}
+          organizing={organizing}
+          onOrganize={setOrganizing}
         />
         <div className="board-row">
           {/* Always there (empty when the engine is off): toggling it does not resize the board. */}
