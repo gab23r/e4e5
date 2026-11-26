@@ -1,5 +1,5 @@
 /**
- * The next moves of the position on the board (editor), as chips on one row: the main move first
+ * The next moves of the position on the board (editor, explorer), as chips on one row: the main move first
  * (outlined), the other moves trained, then the pause zone at the end holding the paused ones
  * (greyed). A click plays the move; a long press (right click) asks its actions (pause, delete). A
  * chip dragged along the row with the mouse or a finger changes the order: dropped first, it
@@ -19,7 +19,15 @@ import type { DropTarget } from './useMoveDrag';
 /** Moving this far (px) starts a drag; less is a click. */
 const DRAG_PX = 6;
 
-export function MoveChips({
+/** A next move shown as a chip: a move of the repertoire (editor) or of several (explorer). */
+export type ChipMove = Pick<StoredMove, 'uci' | 'san' | 'nags' | 'comment' | 'paused' | 'isMain'> & {
+  /** Its key (for the drop and the animation). */
+  id: number;
+  /** A first line for its tooltip (e.g. the repertoires playing it). */
+  label?: string;
+};
+
+export function MoveChips<M extends ChipMove>({
   moves,
   draft,
   moveNumber,
@@ -29,15 +37,15 @@ export function MoveChips({
   onDiscardDraft,
 }: {
   /** The moves trained (main first), then the paused ones. */
-  moves: StoredMove[];
+  moves: M[];
   /** The next move of the line on the board, not saved yet. */
   draft: { uci: string; san: string } | null;
   /** "2." or "2…", before the first chip. */
   moveNumber: string;
   onPlay: (uci: string) => void;
   onDrop: (id: number, target: DropTarget) => void;
-  onActions: (m: StoredMove) => void;
-  onDiscardDraft: () => void;
+  onActions: (m: M) => void;
+  onDiscardDraft?: () => void;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const pauseRef = useRef<HTMLSpanElement>(null);
@@ -64,7 +72,7 @@ export function MoveChips({
     return { zone: 'active', index: index < 0 ? chips.length : index };
   };
 
-  const dragProps = (m: StoredMove) => ({
+  const dragProps = (m: M) => ({
     onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
       if (e.button !== 0) return;
       press.current = { id: m.id, x: e.clientX, y: e.clientY, dragging: false };
@@ -104,7 +112,7 @@ export function MoveChips({
   const markBefore = drag?.zone === 'active' ? others[drag.index]?.id : undefined;
   const markEnd = drag?.zone === 'active' && drag.index >= others.length;
 
-  const chip = (m: StoredMove) => (
+  const chip = (m: M) => (
     <button
       key={m.id}
       type="button"
@@ -123,6 +131,7 @@ export function MoveChips({
         .join(' ')}
       style={drag?.id === m.id ? { transform: `translate(${drag.dx}px, ${drag.dy}px)` } : undefined}
       title={[
+        m.label,
         m.comment,
         m.paused ? t('En pause : pas entraîné', 'Paused: not trained') : m.isMain && several ? t('Coup principal', 'Main move') : '',
         t('Glisser pour changer l’ordre, ou à la fin pour mettre en pause · appui long : actions', 'Drag to reorder, or to the end to pause · long press: actions'),
@@ -148,9 +157,9 @@ export function MoveChips({
         {draft && (
           <span className="move-chip draft" title={t('Suite de votre ligne, pas encore enregistrée', 'Continuation of your line, not saved yet')}>
             <button type="button" className="chip-move" onClick={() => onPlay(draft.uci)}>{draft.san}</button>
-            <button type="button" className="chip-x" onClick={onDiscardDraft} title={t('Annuler la suite non enregistrée à partir d’ici', 'Discard the unsaved continuation from here')} aria-label={t('Annuler', 'Discard')}>
+            {onDiscardDraft && <button type="button" className="chip-x" onClick={onDiscardDraft} title={t('Annuler la suite non enregistrée à partir d’ici', 'Discard the unsaved continuation from here')} aria-label={t('Annuler', 'Discard')}>
               <Icon name="close" size={13} />
-            </button>
+            </button>}
           </span>
         )}
         {active.map((m) => chip(m))}

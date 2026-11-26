@@ -6,8 +6,11 @@ import { RATING_BUCKETS } from '@e4e5/core';
 import type { Me } from './api';
 import { bucketTop, explorerParams, useSettings } from './settings';
 
-/** One name per rating bucket of the statistics (RATING_BUCKETS), weakest first. */
-const NAMES = ['Basile', 'Lucie', 'Hugo', 'Camille', 'Victor', 'Inès', 'Maxime', 'Sofia', 'Ivan'] as const;
+/**
+ * One name per rating bucket of the statistics (RATING_BUCKETS), weakest first; the beginner
+ * plays under 1000 and up to 1200. Their faces: BotAvatar.
+ */
+const NAMES = ['Basile', 'Basile', 'Hugo', 'Maxime', 'Victor', 'Camille', 'Simone', 'Ivan', 'Turing'] as const;
 
 export interface Opponent {
   name: string;

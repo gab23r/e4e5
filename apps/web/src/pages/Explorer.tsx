@@ -2,7 +2,7 @@ import { playSanOn, playUci, positionFromFen, START_FEN, totalGames, type Color,
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DrawShape } from 'chessground/draw';
 import type { Key } from 'chessground/types';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, ApiError, type Me, type MyGameRef, type ChapterMoveHere } from '../api';
 import { Board } from '../components/Board';
@@ -17,14 +17,12 @@ import { AnalysisToggle, useAnalysisToggle } from '../components/ToolCards';
 import { MoveTable } from '../components/MoveTable';
 import { San } from '../components/Nag';
 import { OpeningName } from '../components/OpeningName';
-import { PausedZoneHeader } from '../components/PausedZoneHeader';
-import { useMoveDrag, type DropTarget } from '../components/useMoveDrag';
-import { useLongPress } from '../components/useLongPress';
+import type { DropTarget } from '../components/useMoveDrag';
 import { MoveActionsDialog } from '../components/MoveActionsDialog';
-import { useFlip } from '../components/useFlip';
+import { MoveChips } from '../components/MoveChips';
 import { lang, t } from '../i18n';
 import { explorerParams, rangeLabel, speedsLabel, useSettings } from '../settings';
-import { Icon, PageHeader, plural } from '../ui';
+import { Button, Icon, PageHeader, plural } from '../ui';
 
 /** Moves from the initial position, as UCI, for links. */
 const ucis = (line: PlayedMove[]) => line.map((m) => m.uci).join(',');
@@ -190,6 +188,24 @@ export function Explorer({ me }: { me: Me }) {
     if (line[ply]) goTo(ply + 1);
     else if (nextMoves[0]) play(nextMoves[0].uci);
   };
+  /** The next moves as chips: the repertoires playing each in its tooltip, their comments (one per text). */
+  const chips = useMemo(
+    () =>
+      nextMoves.map((g, i) => {
+        const comments = [...new Map(g.reps.filter((r) => r.comment).map((r) => [r.comment!, r])).values()];
+        return {
+          id: i,
+          uci: g.uci,
+          san: g.san,
+          nags: g.nags,
+          paused: g.paused,
+          isMain: g.main,
+          comment: comments.length ? comments.map((r) => (comments.length > 1 ? `${chapterLabel(r)} : ${r.comment}` : r.comment)).join('\n') : null,
+          label: g.reps.map(chapterLabel).join(', '),
+        };
+      }),
+    [nextMoves],
+  );
   const qc = useQueryClient();
   /**
    * Main and paused moves, set by dragging the next moves (as in the editor), in every repertoire
@@ -227,13 +243,9 @@ export function Explorer({ me }: { me: Me }) {
       arrange.mutate(mineOf(active[1]).map((r) => ({ r, patch: { isMain: true } })));
     }
   };
-  const { listRef, drag, handle } = useMoveDrag(dropMove);
   // A long press on a next move (right click with a mouse): its actions, in every repertoire
   // playing it (pause; delete, with what only follows it).
-  const longPress = useLongPress();
   const [acting, setActing] = useState<(typeof nextMoves)[number] | null>(null);
-  // The moves slide to their new place (paused: down into the paused zone; main: up).
-  useFlip(listRef);
   const removeMove = useMutation({
     mutationFn: async (rows: ChapterMoveHere[]) => {
       for (const r of rows) await api.deleteMove(r.chapterId, r.id);
@@ -345,13 +357,12 @@ export function Explorer({ me }: { me: Me }) {
           <EvalBar line={engineOn ? engine.lines[0] : undefined} orientation={orientation} off={!engineOn} />
           <Board fen={fen} orientation={orientation} lastMove={last?.uci} shapes={shapes} onMove={play} />
         </div>
-        <div className="nav">
-          <button onClick={() => goTo(0)} title={t('Début (Origine)', 'Start (Home)')}>⏮</button>
-          <button onClick={() => goTo(ply - 1)} title={t('Reculer (←)', 'Back (←)')}>◀</button>
-          <button onClick={forward} title={t('Avancer (→)', 'Forward (→)')}>▶</button>
-          <button onClick={() => goTo(line.length)} title={t('Fin de la ligne (Fin)', 'End of the line (End)')}>⏭</button>
-          <button onClick={flip} title={t('Retourner l’échiquier (f)', 'Flip the board (f)')}>⇅</button>
+        {/* The analysis and the flip on the left, then back and forward. Start: the cross of the line (Home key). */}
+        <div className="nav explorer-nav">
           <AnalysisToggle enabled={analysisOn} onToggle={toggleAnalysis} />
+          <button onClick={flip} title={t('Retourner l’échiquier (f)', 'Flip the board (f)')}>⇅</button>
+          <button onClick={() => goTo(ply - 1)} disabled={ply === 0} title={t('Reculer (←)', 'Back (←)')}>◀</button>
+          <button onClick={forward} title={t('Avancer (→)', 'Forward (→)')}>▶</button>
         </div>
         {/* The analysis: the Lichess moves at my level with Stockfish's evaluation (Éval column). */}
         {analysisOn && (
@@ -395,6 +406,7 @@ export function Explorer({ me }: { me: Me }) {
               onCancel={() => setEditing(false)}
             />
           ) : (
+            <div className="line-row">
             <div className="moves-path">
               {line.length === 0 && <span className="muted">{t('Position initiale', 'Starting position')}</span>}
               {line.map((m, i) => (
@@ -410,6 +422,10 @@ export function Explorer({ me }: { me: Me }) {
               <button className="line-edit" onClick={() => setEditing(true)} title={t('Taper ou coller une ligne (/)', 'Type or paste a line (/)')} aria-label={t('Taper ou coller une ligne', 'Type or paste a line')}>
                 <Icon name="pencil" size={15} />
               </button>
+            </div>
+            {line.length > 0 && (
+              <Button size="sm" variant="ghost" icon="close" title={t('Revenir au début (efface la ligne)', 'Back to the start (clears the line)')} onClick={() => setLine([], 0)} />
+            )}
             </div>
           )}
           {/* The repertoires containing the position on the board (a link opens each one here). */}
@@ -438,63 +454,18 @@ export function Explorer({ me }: { me: Me }) {
               ))}
             </div>
           )}
-          {/* The next moves of my repertoires here: annotation colour, comment; a click anywhere on the row plays the move.
-              The grip: drag on top to make it main, into the paused zone to pause it (as in the editor). */}
+          {/* The next moves of my repertoires here, as chips (as in the editor): a click plays the move,
+              a drag makes it main or pauses it, a long press (right click) its actions, in every
+              repertoire playing it. */}
           {nextMoves.length > 0 && (
-            <ul className={`rep-moves next-moves ${drag ? 'dragging-list' : ''}`} ref={listRef}>
-              {nextMoves.map((g, i) => {
-                const zone = g.paused ? 'paused' : 'active';
-                // Drop indicator: a line before the row the dragged move would land before.
-                const others = nextMoves.filter((x, k) => (x.paused ? 'paused' : 'active') === zone && k !== drag?.id);
-                const rank = others.indexOf(g);
-                const dropBefore = !!drag && drag.id !== i && drag.zone === 'active' && zone === 'active' && rank === drag.index;
-                const dropAfter = !!drag && drag.id !== i && drag.zone === 'active' && zone === 'active' && rank === others.length - 1 && drag.index === others.length;
-                // One comment per text (the same move commented in several repertoires).
-                const comments = [...new Map(g.reps.filter((r) => r.comment).map((r) => [r.comment!, r])).values()];
-                return (
-                  <Fragment key={g.uci}>
-                    {i === nextMoves.findIndex((x) => x.paused) && (
-                      <PausedZoneHeader target={drag?.zone === 'paused'} dropAbove={drag?.zone === 'active' && !nextMoves.some((x, k) => !x.paused && k !== drag.id)} />
-                    )}
-                    <li
-                      data-zone={zone}
-                      data-id={i}
-                      data-flip={`${fen}|${g.uci}`}
-                      className={['next-move', 'clickable', g.paused ? 'paused' : '', drag?.id === i ? 'dragging' : '', dropBefore ? 'drop-before' : '', dropAfter ? 'drop-after' : '']
-                        .filter(Boolean)
-                        .join(' ')}
-                      style={drag?.id === i ? { transform: `translateY(${drag.dy}px)` } : undefined}
-                      title={t(
-                        `Jouer ${g.san} (${g.reps.map(chapterLabel).join(', ')}) · appui long : mettre en pause, supprimer`,
-                        `Play ${g.san} (${g.reps.map(chapterLabel).join(', ')}) · long press: pause, delete`,
-                      )}
-                      onClick={() => play(g.uci)}
-                      {...longPress(() => setActing(g))}
-                    >
-                      <div className="move-main">
-                        <button className="link san">
-                          <span className="move-num">{ply % 2 === 0 ? `${ply / 2 + 1}.` : `${(ply + 1) / 2}…`}</span>
-                          <San san={g.san} nags={g.nags} />
-                        </button>
-                        {g.main && nextMoves.filter((x) => !x.paused).length > 1 && <span className="badge">{t('principal', 'main')}</span>}
-                        {comments.map((r) => (
-                          <div key={r.chapterId} className="comment move-comment">
-                            {comments.length > 1 && <span className="muted">{t(`${chapterLabel(r)} : `, `${chapterLabel(r)}: `)}</span>}
-                            {r.comment}
-                          </div>
-                        ))}
-                      </div>
-                      <span className="grip" title={t('Glisser : en haut, coup principal ; en bas, en pause', 'Drag: to the top, main move; to the bottom, paused')} {...handle(i)}>
-                        <Icon name="grip" size={16} />
-                      </span>
-                    </li>
-                  </Fragment>
-                );
-              })}
-              {drag && !nextMoves.some((x) => x.paused) && (
-                <PausedZoneHeader target={drag.zone === 'paused'} dropAbove={drag.zone === 'active' && !nextMoves.some((_, k) => k !== drag.id)} />
-              )}
-            </ul>
+            <MoveChips
+              moves={chips}
+              draft={null}
+              moveNumber={ply % 2 === 0 ? `${ply / 2 + 1}.` : `${(ply + 1) / 2}…`}
+              onPlay={play}
+              onDrop={dropMove}
+              onActions={(m) => setActing(nextMoves[m.id] ?? null)}
+            />
           )}
           {acting && (
             <MoveActionsDialog

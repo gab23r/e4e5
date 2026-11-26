@@ -5,6 +5,7 @@ import { api } from './api';
 import { startReviewSync } from './offline/reviews';
 import { InstallPrompt } from './components/InstallPrompt';
 import { useTrainingSummary } from './useTrainingSummary';
+import { streakOf, useAnswers } from './activity';
 import type { Me } from './api';
 import { Explorer } from './pages/Explorer';
 import { Home } from './pages/Home';
@@ -96,6 +97,9 @@ export function App() {
   // Badge of the Entraîner tab: lines to review today, plus the new lines still allowed today
   // (one daily limit for all repertoires).
   const summary = useTrainingSummary(me.data);
+  // Home page: my series of days in a row, in the app bar.
+  const onHome = pathname === '/';
+  const streak = streakOf(useAnswers(onHome && !!me.data).answers.data);
   // Where the page header goes on a phone (ui.tsx PageHeader).
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const active = (summary.data ?? []).filter((s) => s.active);
@@ -129,6 +133,11 @@ export function App() {
           ))}
         </nav>
         <div className="spacer" />
+        {onHome && streak > 0 && (
+          <span className="appbar-streak" title={t(plural(streak, 'jour d’affilée d’entraînement', 'jours d’affilée d’entraînement'), `${plural(streak, 'day', 'days')} of training in a row`)}>
+            🔥 {streak}
+          </span>
+        )}
         <Menu
           trigger={me.data.username.slice(0, 1).toUpperCase()}
           title={t('Compte', 'Account')}

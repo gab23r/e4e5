@@ -4,10 +4,10 @@
  * activity over the last weeks. Without any repertoire: what the app does and how to start.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Gap, type Me, type RepertoireSummary, type ReviewError, type TrainingSummary } from '../api';
-import { BotAvatar } from '../components/BotAvatar';
+import { BotAvatar, botColor } from '../components/BotAvatar';
 import { MiniBoard } from '../components/MiniBoard';
 import { San } from '../components/Nag';
 import { SwipeRow } from '../components/SwipeRow';
@@ -19,28 +19,14 @@ import { useTrainingSummary } from '../useTrainingSummary';
 import { useGaps } from '../useGaps';
 import { useOpponent } from '../opponent';
 import { Button, Icon, plural } from '../ui';
+import { DAY, dayOf, useAnswers, WEEKS } from '../activity';
 
-const WEEKS = 12;
-const DAY = 86_400_000;
-
-/** Midnight (local) of the day of `ms`. */
-const dayOf = (ms: number) => {
-  const d = new Date(ms);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-};
 
 export function Home({ me }: { me: Me }) {
   const reps = useQuery({ queryKey: ['repertoires'], queryFn: api.repertoires });
   const summary = useTrainingSummary(me);
   const gaps = useGaps(me, (reps.data?.length ?? 0) > 0);
-  // From the Monday WEEKS weeks ago (the grid's first column).
-  const since = useMemo(() => {
-    const today = dayOf(Date.now());
-    const monday = today - ((new Date(today).getDay() + 6) % 7) * DAY;
-    return monday - (WEEKS - 1) * 7 * DAY;
-  }, []);
-  const answers = useQuery({ queryKey: ['answers-since', since], queryFn: () => api.answersSince(since), staleTime: 0 });
+  const { since, answers } = useAnswers();
 
   if (reps.isLoading) return <p className="muted">{t('Chargement…', 'Loading…')}</p>;
   if (!reps.data?.length) return <Welcome />;
@@ -82,13 +68,9 @@ export function todo(due: number, fresh: number, form: 'long' | 'short'): string
   return long ? `${parts.join(t(' et ', ' and '))}${t(' aujourd’hui.', ' today.')}` : parts.join(' · ');
 }
 
-/** The day: hello, series of days in a row, what is left today, the button to go on. */
+/** The day: hello, what is left today, the button to go on (the series of days is in the app bar). */
 function Today({ name, due, fresh, answers, loading }: { name?: string; due: number; fresh: number; answers?: { at: number; ok: boolean }[]; loading: boolean }) {
-  const days = new Set((answers ?? []).map((a) => dayOf(a.at)));
   const today = dayOf(Date.now());
-  // Days in a row up to today (or yesterday: today's training not done yet keeps the series).
-  let streak = 0;
-  for (let d = days.has(today) ? today : today - DAY; days.has(d); d -= DAY) streak++;
   const doneToday = (answers ?? []).filter((a) => a.at >= today).length;
   const left = due + fresh;
   // Still counting: the review (most likely something to do).
@@ -116,10 +98,6 @@ function Today({ name, due, fresh, answers, loading }: { name?: string; due: num
         </div>
       </div>
       <div className="home-stats">
-        <div className={`home-stat streak ${streak > 0 ? 'on' : ''}`}>
-          <span className="home-stat-value">{streak > 0 ? '🔥' : '·'} {fmt(streak)}</span>
-          <span className="muted small-text">{t(plural(streak, 'jour d’affilée', 'jours d’affilée'), streak === 1 ? 'day in a row' : 'days in a row')}</span>
-        </div>
         <div className="home-stat">
           <span className="home-stat-value">{fmt(doneToday)}</span>
           <span className="muted small-text">{t('réponses aujourd’hui', 'answers today')}</span>
@@ -136,18 +114,18 @@ function Today({ name, due, fresh, answers, loading }: { name?: string; due: num
 function PlayCard({ me }: { me: Me }) {
   const { name, elo } = useOpponent(me);
   return (
-    <Link to="/train?mode=test" className="mode-card play-card">
-      <BotAvatar name={name} size={56} />
-      <span className="mode-text">
-        <strong>{t(`Jouer contre ${name}`, `Play against ${name}`)} <span className="opponent-elo">{elo}</span></strong>
-        <span className="muted small-text">
-          {t(
-            'Vos lignes, sans aide, comme en partie : les coups les plus fréquents des joueurs de votre niveau.',
-            'Your lines, without help, as in a game: the most frequent moves of players of your level.',
-          )}
-        </span>
+    <Link to="/train?mode=test" className="play-card" style={{ '--bot': botColor(name) } as CSSProperties}>
+      <BotAvatar name={name} size={72} />
+      <span className="play-card-text">
+        <strong className="play-card-name">
+          {name} <span className="opponent-elo">{elo}</span>
+        </strong>
+        <span className="play-card-sub">{t('Vos lignes, sans aide', 'Your lines, no help')}</span>
       </span>
-      <Icon name="chevron" size={18} />
+      <span className="btn btn-primary btn-lg play-card-cta">
+        <Icon name="play" size={18} />
+        {t(`Défier ${name}`, `Challenge ${name}`)}
+      </span>
     </Link>
   );
 }

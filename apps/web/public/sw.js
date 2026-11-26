@@ -3,7 +3,7 @@
  *
  * - Pages (navigations): network first, the cached app shell (index.html) when offline.
  * - /assets/ (content-hashed names) and /stockfish/: cache first, fetched once.
- * - Icons and manifest: cached copy at once, refreshed in the background.
+ * - Icons, bot faces and manifest: cached copy at once, refreshed in the background.
  * - /api/ and other origins: never cached (sessions, live data).
  *
  * On each new index.html, the cached /assets/ files it no longer uses are dropped (a later
@@ -40,7 +40,7 @@ self.addEventListener('fetch', (event) => {
 
   if (req.mode === 'navigate') event.respondWith(navigate(req));
   else if (under(url.pathname, 'assets/') || under(url.pathname, 'stockfish/')) event.respondWith(cacheFirst(req));
-  else if (under(url.pathname, 'icons/') || url.pathname === `${BASE}manifest.webmanifest`) event.respondWith(staleWhileRevalidate(event, req));
+  else if (under(url.pathname, 'icons/') || under(url.pathname, 'bots/') || url.pathname === `${BASE}manifest.webmanifest`) event.respondWith(staleWhileRevalidate(event, req));
 });
 
 /** Caches index.html and the files it references (entry script, CSS), and drops stale assets. */
