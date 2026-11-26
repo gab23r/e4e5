@@ -33,7 +33,7 @@ export function Repertoires({ me }: { me: Me }) {
   for (const g of [...(gaps.data?.white?.gaps ?? []), ...(gaps.data?.black?.gaps ?? [])]) {
     if (!g.repertoireId) continue;
     missing.set(g.repertoireId, (missing.get(g.repertoireId) ?? 0) + 1);
-    if (!firstGap.has(g.repertoireId)) firstGap.set(g.repertoireId, g.move ? [...g.ucis, g.move.uci] : g.ucis);
+    if (!firstGap.has(g.repertoireId)) firstGap.set(g.repertoireId, g.ucis);
   }
 
   // Filters live in the URL: they survive opening a repertoire and coming back.
@@ -155,7 +155,7 @@ function RepertoireRow({ rep, counts, missing, firstGap }: {
   rep: RepertoireSummary;
   counts?: TrainingSummary;
   missing?: number;
-  /** Line (UCI) of the most frequent missing move, the move included. */
+  /** Line (UCI) of the most frequent missing move, up to the position where it is played (the move not played: its orange arrow shows there). */
   firstGap?: string[];
 }) {
   const navigate = useNavigate();

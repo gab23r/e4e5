@@ -10,6 +10,8 @@ import { Link } from 'react-router-dom';
 import { api, type Gap, type Me, type RepertoireSummary, type TrainingSummary } from '../api';
 import { GameErrorCard } from '../components/GameErrorCard';
 import { MiniBoard } from '../components/MiniBoard';
+import { chapterForPosition } from '../chapters';
+import { moveText } from '../chessText';
 import { fmt, lang, t } from '../i18n';
 import { useTrainingSummary } from '../useTrainingSummary';
 import { useGaps } from '../useGaps';
@@ -177,29 +179,26 @@ function ToReview({ reps, summary }: { reps: RepertoireSummary[]; summary: Train
   );
 }
 
-/** The most frequent opponent move not prepared yet: where, how often, prepare it. */
+/**
+ * The most frequent opponent move not prepared yet: the position (the move in orange) and the
+ * chapter it comes up in (the first one, when several reach it); a click opens it to prepare it.
+ */
 function GapOfTheDay({ gap, rep }: { gap: Gap; rep: RepertoireSummary | undefined }) {
-  const to = `/r/${gap.repertoireId}?${new URLSearchParams({ line: [...gap.ucis, gap.move!.uci].join(','), gap: '1' })}`;
-  const after = gap.line.length ? gap.line.map((san, i) => (i % 2 === 0 ? `${i / 2 + 1}. ${san}` : san)).join(' ') : t('la position initiale', 'the starting position');
+  const to = `/r/${gap.repertoireId}?${new URLSearchParams({ line: gap.ucis.join(','), gap: '1' })}`;
+  const detail = useQuery({ queryKey: ['repertoire', gap.repertoireId], queryFn: () => api.repertoire(gap.repertoireId!), enabled: !!gap.repertoireId });
+  const d = detail.data;
+  const chapter = d ? chapterForPosition(d.color, d.chapters, d.moves, gap.fen)?.chapter.name : undefined;
+  const where = chapter ?? rep?.name;
+  const move = moveText(gap.line, gap.move!.san, true);
   return (
     <section className="stack">
       <h3>{t('Coup manquant du jour', 'Missing move of the day')}</h3>
       <Link to={to} className="card home-gap">
         <MiniBoard fen={gap.fen} orientation={rep?.color ?? 'white'} arrows={[{ uci: gap.move!.uci, kind: 'popular' }]} />
-        <span className="stack" style={{ gap: 6 }}>
-          <span>
-            {t('Après ', 'After ')}
-            <span className="muted">{after}</span>
-            {t(', l’adversaire joue ', ', the opponent plays ')}
-            <strong className="hole-move">{gap.move!.san}</strong>
-            {t(` dans ${Math.round(100 * gap.prob)} % de vos parties.`, ` in ${Math.round(100 * gap.prob)}% of your games.`)}
-          </span>
-          <span className="muted small-text">{rep?.name}</span>
-          <span className="row">
-            <span className="btn btn-sm">
-              <Icon name="plus" size={16} /> {t('Préparer une réponse', 'Prepare a reply')}
-            </span>
-          </span>
+        <span className="home-gap-text">
+          {where
+            ? t(<>Dans <strong>{where}</strong>, préparez votre réponse contre <strong className="hole-move">{move}</strong></>, <>In <strong>{where}</strong>, prepare your reply to <strong className="hole-move">{move}</strong></>)
+            : t(<>Préparez votre réponse contre <strong className="hole-move">{move}</strong></>, <>Prepare your reply to <strong className="hole-move">{move}</strong></>)}
         </span>
       </Link>
     </section>

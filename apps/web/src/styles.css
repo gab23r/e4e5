@@ -1032,9 +1032,11 @@ table.explorer tr.move-detail table.games { font-size: 0.85rem; }
 .home-grid { display: grid; gap: 24px; grid-template-columns: 1fr; }
 .home-grid:empty { display: none; }
 @media (min-width: 1000px) { .home-grid { grid-template-columns: 1fr 1fr; } }
-.home-gap { display: flex; gap: 14px; align-items: center; color: var(--text); }
+.home-gap { display: flex; flex-direction: column; gap: 12px; align-items: stretch; color: var(--text); }
 .home-gap:hover { text-decoration: none; background: var(--surface-2); }
-.home-gap .mini-board { width: 120px; height: 120px; flex: none; pointer-events: none; }
+.home-gap .mini-board { width: min(100%, 360px); height: auto; aspect-ratio: 1; align-self: center; flex: none; pointer-events: none; }
+.home-gap-text { font-size: 1.05rem; line-height: 1.45; }
+@media (min-width: 640px) { .home-gap { flex-direction: row; align-items: center; } .home-gap .mini-board { width: 240px; align-self: auto; } }
 .home-activity { overflow-x: auto; }
 .heatmap { display: flex; gap: 4px; }
 .heatmap-col { display: flex; flex-direction: column; gap: 4px; }

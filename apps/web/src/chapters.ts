@@ -34,9 +34,11 @@ export function playLine(from: string, ucis: string[]): PlayedMove[] {
 }
 
 /**
- * The chapter a line from the initial position belongs to best: the one following it the
- * furthest (a chapter starting at a position counts from there, if the line goes through it),
- * the first chapter on a tie. Answers the chapter and the line from its start.
+ * The chapter a line from the initial position belongs to best, and the line to show in it: the
+ * chapter reaching the furthest position of the line (by any move order: transpositions count),
+ * the first chapter on a tie, with its own path to that position followed by the rest of the
+ * line (the moves not in it, e.g. a missing move). Null when no chapter reaches any position of
+ * the line (not even its start).
  */
 export function chapterForLine(
   color: Color,
@@ -44,20 +46,19 @@ export function chapterForLine(
   moves: StoredMove[],
   line: PlayedMove[],
 ): { chapter: ChapterInfo; line: PlayedMove[] } | null {
-  let best: { chapter: ChapterInfo; line: PlayedMove[]; score: number } | null = null;
-  for (const chapter of chapters) {
-    const root = chapterRoot(chapter);
-    const start = root === START_FEN ? 0 : line.findIndex((m) => m.toFen === root) + 1;
-    if (root !== START_FEN && start === 0) continue;
+  const fens = [START_FEN, ...line.map((m) => m.toFen)];
+  const graphs = chapters.map((chapter) => {
     const graph = chapterGraph(color, moves, chapter.id);
-    const rest = line.slice(start);
-    let score = 0;
-    while (score < rest.length && graph.has(rest[score]!.fromFen, rest[score]!.uci)) score++;
-    // Counted from the initial position: a chapter starting on the line has its first moves.
-    const total = start + score;
-    if (!best || total > best.score) best = { chapter, line: rest, score: total };
+    return { chapter, graph, root: chapterRoot(chapter), reach: graph.reachable(chapterRoot(chapter)) };
+  });
+  for (let i = line.length; i >= 0; i--) {
+    for (const g of graphs) {
+      if (!g.reach.has(fens[i]!)) continue;
+      const path = pathTo(g.graph, fens[i]!, g.root);
+      if (path) return { chapter: g.chapter, line: [...path, ...line.slice(i)] };
+    }
   }
-  return best && { chapter: best.chapter, line: best.line };
+  return null;
 }
 
 /** The first chapter containing a position, with the path to it from the chapter's start. */

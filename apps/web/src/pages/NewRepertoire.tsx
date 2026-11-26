@@ -39,6 +39,8 @@ export function NewRepertoire({ me }: { me: Me }) {
   const chapterId = params.get('chapter') ?? undefined;
 
   const created = async (rep: { id: string }) => {
+    // A new repertoire changes the missing moves and the lines to train too.
+    for (const key of ['gaps', 'training-summary']) void qc.invalidateQueries({ queryKey: [key] });
     await qc.invalidateQueries({ queryKey: ['repertoires'] });
     navigate(`/r/${rep.id}`);
   };

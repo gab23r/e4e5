@@ -360,8 +360,8 @@ export function RepertoireEditor({ me }: { me: Me }) {
     else if (target) jumpTo(target.line);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-  /** Opens a missing move: its line, then the opponent move not prepared (a draft). */
-  const openGap = (g: Gap, d: RepertoireDetail) => openLineOf(g.move ? [...g.ucis, g.move.uci] : g.ucis, d);
+  /** Opens a missing move: the position where it is played (its orange arrow, the move not played yet). */
+  const openGap = (g: Gap, d: RepertoireDetail) => openLineOf(g.ucis, d);
 
   // One button for the analysis (on for the browser session only): Lichess at my level (on the
   // opponent's turn, each of its moves scored from the search after it; its box follows the

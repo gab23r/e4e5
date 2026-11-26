@@ -15,7 +15,7 @@
  * needs without them can be fetched in the background (`prefetch`, server): the client asks again
  * until nothing is pending, and each pass may reach deeper positions.
  */
-import { findGaps, gapCandidate, LINE_DEPTHS, mergeChapterMoves, obviousReply, playUci, Repertoire, rankRepertoires, turnOf, type Color, type StoredStats } from '@e4e5/core';
+import { findGaps, gapCandidate, LINE_DEPTHS, mergeChapterMoves, obviousReply, pathTo, playUci, Repertoire, rankRepertoires, turnOf, type Color, type StoredStats } from '@e4e5/core';
 import { and, eq, like } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { repertoireGraphs } from './repertoires.js';
@@ -107,11 +107,35 @@ export async function gapsAnalysis(db: Db, userId: string, q: GapsQuery, storedS
     );
     const kept = listed.filter((g) => !obvious.has(g));
     const shown = kept.filter((g) => !ignoredKeys.has(gapKey(g.fen, g.move!.uci)));
+    /**
+     * The repertoire a missing move belongs to: the best suited one past its trunk (core
+     * rankRepertoires), else the only repertoire of the colour reaching its position (a long trunk:
+     * a repertoire of one line); null when several reach it inside their trunks (e.g. 1. b4 for
+     * repertoires against 1. e4 and 1. d4).
+     */
+    const ownerOf = (g: (typeof listed)[number]): string | null => {
+      const best = rankRepertoires(g, candidates)[0];
+      const reaching = candidates.filter((c) => c.reach.has(g.fen));
+      // A repertoire reaching the position by its own moves beats one only sharing the start of
+      // the line (the line then went on through another repertoire, by a transposition).
+      if (best?.owns && (reaching.length !== 1 || reaching[0]!.key === best.key)) return best.key;
+      return reaching.length === 1 ? reaching[0]!.key : null;
+    };
+    /**
+     * The line to a missing move: inside the repertoire owning it when it reaches the position
+     * (its own move order, so the editor opens it in the right chapter with only the missing move
+     * new), else the most played way there (which may go through another repertoire, or through
+     * an unprepared opponent move transposing back).
+     */
+    const lineOf = (g: (typeof listed)[number], owner: string | null) => {
+      const c = owner === null ? undefined : candidates.find((x) => x.key === owner);
+      return (c?.reach.has(g.fen) && pathTo(c.rep, g.fen)) || g.path;
+    };
     /** Missing moves per repertoire owning them. */
     const byOwner = (list: typeof listed) =>
       list.reduce<Record<string, number>>((n, g) => {
-        const owner = rankRepertoires(g, candidates)[0];
-        if (owner?.owns) n[owner.key] = (n[owner.key] ?? 0) + 1;
+        const owner = ownerOf(g);
+        if (owner) n[owner] = (n[owner] ?? 0) + 1;
         return n;
       }, {});
     return {
@@ -137,15 +161,17 @@ export async function gapsAnalysis(db: Db, userId: string, q: GapsQuery, storedS
         .slice(0, MAX_GAPS)
         .map((g) => {
           const ranking = rankRepertoires(g, candidates);
+          const owner = ownerOf(g);
+          const path = lineOf(g, owner);
           return {
             kind: g.kind,
             fen: g.fen,
             move: g.move ?? null,
             prob: Math.min(1, g.prob),
-            line: g.path.map((m) => m.san),
-            ucis: g.path.map((m) => m.uci),
-            /** null: a deviation inside every repertoire's trunk (belongs to none of them). */
-            repertoireId: ranking[0]?.owns ? ranking[0].key : null,
+            line: path.map((m) => m.san),
+            ucis: path.map((m) => m.uci),
+            /** null: a deviation inside the trunks of several repertoires (belongs to none of them). */
+            repertoireId: owner,
             /** Every repertoire of the colour, best suited first (to prepare the hole in). */
             ranking: ranking.map((r) => r.key),
           };
