@@ -8,7 +8,8 @@
  *
  * Only the opponent moves forgotten among the replies a line prepares are listed: the end of a
  * line (on my move or on the opponent's, no answer after it) is not a missing move, nor a move
- * whose reply is obvious at my level or after which I already win (core obviousReply).
+ * whose reply is obvious at my level or after which I already win (core obviousReply), nor one
+ * leading to a position too rare at my level to have statistics.
  *
  * Runs on statistics at hand only (`storedStats`), so it answers at once. Positions the analysis
  * needs without them can be fetched in the background (`prefetch`, server): the client asks again
@@ -94,10 +95,16 @@ export async function gapsAnalysis(db: Db, userId: string, q: GapsQuery, storedS
     const listed = report.gaps.filter((g) => g.kind === 'missing-reply' && g.prob >= q.cutoff);
     // Nor the missing moves not worth preparing, judged on the statistics of the position they
     // lead to (core obviousReply): players of my level find a good reply by themselves, or I
-    // already win most games there.
+    // already win most games there. A position without statistics (too rare at my level to be in
+    // them) is not listed either.
     const after = new Map(listed.map((g) => [g, playUci(g.fen, g.move!.uci)?.toFen]));
     const afterStats = await storedStats([...new Set([...after.values()].filter((f): f is string => !!f))]);
-    const obvious = new Set(listed.filter((g) => obviousReply(afterStats.get(after.get(g) ?? '')?.data, color) !== null));
+    const obvious = new Set(
+      listed.filter((g) => {
+        const there = afterStats.get(after.get(g) ?? '');
+        return !there || obviousReply(there.data, color) !== null;
+      }),
+    );
     const kept = listed.filter((g) => !obvious.has(g));
     const shown = kept.filter((g) => !ignoredKeys.has(gapKey(g.fen, g.move!.uci)));
     /** Missing moves per repertoire owning them. */

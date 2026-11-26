@@ -363,9 +363,10 @@ export function gapOwner<K>(gap: Pick<Gap, 'fen' | 'path'>, candidates: GapCandi
  * When a missing move is not worth preparing, judged on the statistics of the position it leads
  * to (my turn, at my level):
  * - "winning": I already score `winning` or more there (nothing more to learn);
- * - "easy": the move played most often there scores at most `tolerance` below the best of the
- *   moves played often enough (`minAltGames` games and `minAltShare` of them): players of my
- *   level find a good reply by themselves.
+ * - "easy": the move played most often there does not lose points: it scores at most `tolerance`
+ *   below the position (all the moves played), and at most `trap` below the best of the moves
+ *   played often enough (`minAltGames` games and `minAltShare` of them; a trap is a position
+ *   where nearly everyone plays a bad move). Players of my level find a good reply by themselves.
  * Null (a real missing move) otherwise, and when the position has fewer than `minGames` games.
  */
 export interface ReplyCheck {
@@ -373,10 +374,11 @@ export interface ReplyCheck {
   minAltGames: number;
   minAltShare: number;
   tolerance: number;
+  trap: number;
   winning: number;
 }
 
-export const REPLY_CHECK: ReplyCheck = { minGames: 50, minAltGames: 20, minAltShare: 0.05, tolerance: 0.05, winning: 0.7 };
+export const REPLY_CHECK: ReplyCheck = { minGames: 20, minAltGames: 20, minAltShare: 0.05, tolerance: 0.05, trap: 0.15, winning: 0.7 };
 
 export function obviousReply(stats: ExplorerResponse | null | undefined, me: 'white' | 'black', check: ReplyCheck = REPLY_CHECK): 'winning' | 'easy' | null {
   if (!stats) return null;
@@ -386,8 +388,8 @@ export function obviousReply(stats: ExplorerResponse | null | undefined, me: 'wh
   if (score(stats) >= check.winning) return 'winning';
   const played = stats.moves.filter((m) => totalGames(m) > 0);
   const top = played.reduce<(typeof played)[number] | undefined>((a, m) => (!a || totalGames(m) > totalGames(a) ? m : a), undefined);
-  if (!top || totalGames(top) < check.minAltGames) return null;
+  if (!top) return null;
   const often = played.filter((m) => totalGames(m) >= Math.max(check.minAltGames, check.minAltShare * total));
-  const best = Math.max(...often.map(score));
-  return score(top) >= best - check.tolerance ? 'easy' : null;
+  const best = Math.max(score(top), ...often.map(score));
+  return score(top) >= score(stats) - check.tolerance && score(top) >= best - check.trap ? 'easy' : null;
 }

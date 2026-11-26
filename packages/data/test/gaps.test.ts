@@ -35,7 +35,8 @@ describe('gap finder report', () => {
     await saveLine(db, 'u1', chapter.id, ['d2d4', 'd7d5']);
     // After 1. e4: e5 (prepared), c6 and d5 (not prepared), each often enough to be listed.
     const table = new Map<string, ExplorerResponse>([
-      [after('e2e4'), stats([['e7e5', 300, 100, 300], ['c7c6', 100, 50, 100], ['d7d5', 100, 50, 100]])],
+      // ...and g6, whose position after it has no statistics (too rare at my level): not listed.
+      [after('e2e4'), stats([['e7e5', 300, 100, 300], ['c7c6', 100, 50, 100], ['d7d5', 100, 50, 100], ['g7g6', 100, 50, 100]])],
       // After 1. e4 d5: the recapture exd5 is played most and scores best (obvious).
       [after('e2e4', 'd7d5'), stats([['e4d5', 60, 20, 20], ['b1c3', 5, 5, 10]])],
       // After 1. e4 c6: the most played move (Nc3) scores far worse than d4 (a real missing move).
@@ -45,6 +46,6 @@ describe('gap finder report', () => {
       new Map(fens.flatMap((f) => (table.has(f) ? [[f, { data: table.get(f)!, exact: true }] as const] : [])));
     const report = await gapsAnalysis(db, 'u1', { speeds: ['blitz'], ratings: [1600], cutoff: 0.01 }, storedStats);
     expect(report.white!.gaps.map((g) => g.move?.uci)).toEqual(['c7c6']);
-    expect(report.white!.obvious).toEqual({ [rep.id]: 1 });
+    expect(report.white!.obvious).toEqual({ [rep.id]: 2 });
   });
 });

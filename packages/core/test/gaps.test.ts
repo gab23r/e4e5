@@ -200,8 +200,18 @@ describe('obvious replies (missing moves not worth preparing)', () => {
     expect(obviousReply(at([['a7a6', 10, 10, 60]]), 'white')).toBe('easy');
   });
 
+  it('is easy when the popular move does not lose points, even if a rarer one scores better', () => {
+    // Most played: 50% for Black (the position: 52%); the less played one: 60%.
+    expect(obviousReply(at([['e5d4', 120, 40, 120], ['f8c5', 25, 10, 40]]), 'black')).toBe('easy');
+  });
+
+  it('is a real missing move when nearly everyone plays a much worse move (a trap)', () => {
+    // 90% of the games: 30% for Black; the rare good move: 75%.
+    expect(obviousReply(at([['d8c3', 120, 20, 40], ['e7e6', 5, 5, 20]]), 'black')).toBeNull();
+  });
+
   it('cannot judge without enough games', () => {
-    expect(obviousReply(at([['d8d5', 10, 5, 10]]), 'black')).toBeNull();
+    expect(obviousReply(at([['d8d5', 5, 3, 7]]), 'black')).toBeNull();
     expect(obviousReply(undefined, 'black')).toBeNull();
   });
 });
