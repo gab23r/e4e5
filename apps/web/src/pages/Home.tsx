@@ -36,13 +36,14 @@ export function Home({ me }: { me: Me }) {
 
   const active = (summary.data ?? []).filter((s) => s.active);
   const due = active.reduce((n, s) => n + s.dueLines, 0);
-  const fresh = Math.min(summary.data?.[0]?.remainingNewLines ?? 0, active.reduce((n, s) => n + s.availableLines, 0));
+  const available = active.reduce((n, s) => n + s.availableLines, 0);
+  const fresh = Math.min(summary.data?.[0]?.remainingNewLines ?? 0, available);
   const byId = new Map(reps.data.map((r) => [r.id, r]));
   const missing = [...(gaps.data?.white?.gaps ?? []), ...(gaps.data?.black?.gaps ?? [])].filter((g) => g.repertoireId && g.move).sort((a, b) => b.prob - a.prob);
 
   return (
     <div className="home stack">
-      <Progress due={due} fresh={fresh} answers={answers.data} loading={!summary.data} />
+      <Progress due={due} fresh={fresh} more={available - fresh} answers={answers.data} loading={!summary.data} />
       <PlayCard me={me} />
       <ToReview reps={reps.data} summary={summary.data} />
       <div className="home-grid">
@@ -88,7 +89,7 @@ function streakOf(answers: { at: number }[]): number {
  * week added, their curve over the last weeks; the days in a row and today's answers; the button
  * to go on training.
  */
-function Progress({ due, fresh, answers, loading }: { due: number; fresh: number; answers?: { at: number; ok: boolean }[]; loading: boolean }) {
+function Progress({ due, fresh, more, answers, loading }: { due: number; fresh: number; more: number; answers?: { at: number; ok: boolean }[]; loading: boolean }) {
   const cards = useQuery(cardsQuery);
   const today = dayOf(Date.now());
   const learnt = (cards.data ?? []).map((c) => Date.parse(c.createdAt)).filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
@@ -117,6 +118,24 @@ function Progress({ due, fresh, answers, loading }: { due: number; fresh: number
         {thisWeek > 0 && <span className="home-progress-delta">{t(`+${fmt(thisWeek)} cette semaine`, `+${fmt(thisWeek)} this week`)}</span>}
       </div>
       {cards.data && total > 0 && <ProgressChart points={points} label={t('Coups appris', 'Moves learnt')} />}
+      {/* Today: the new lines to learn and the lines to review, each with its count. */}
+      {!loading && (
+        <div className="home-today-counts">
+          <div className={`home-count${fresh > 0 ? ' on' : ''}`}>
+            <strong>{fmt(fresh)}</strong>
+            <span>{t(fresh > 1 ? 'nouvelles lignes à apprendre' : 'nouvelle ligne à apprendre', fresh === 1 ? 'new line to learn' : 'new lines to learn')}</span>
+            {fresh === 0 && more > 0 && (
+              <Link className="home-count-more" to={`/train?more=${Math.min(3, more)}`}>
+                <Icon name="plus" size={14} /> {t(`En apprendre ${Math.min(3, more)} de plus`, `Learn ${Math.min(3, more)} more`)}
+              </Link>
+            )}
+          </div>
+          <div className={`home-count${due > 0 ? ' on' : ''}`}>
+            <strong>{fmt(due)}</strong>
+            <span>{t(due > 1 ? 'lignes à revoir' : 'ligne à revoir', due === 1 ? 'line to review' : 'lines to review')}</span>
+          </div>
+        </div>
+      )}
       <div className="home-progress-foot">
         <div className="home-progress-stats">
           <span className={`home-progress-stat ${streak > 0 ? 'on' : ''}`}>

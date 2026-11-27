@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findGaps, gapCandidate, obviousReply, gapOwner, rankRepertoires, repertoireTrunk, pgnToMoves, playUci, Repertoire, START_FEN, type ExplorerResponse, type PrepEnd } from '../src/index.js';
+import { findGaps, keptPositions, trainingPositions, gapCandidate, obviousReply, gapOwner, rankRepertoires, repertoireTrunk, pgnToMoves, playUci, Repertoire, START_FEN, type ExplorerResponse, type PrepEnd } from '../src/index.js';
 
 const rep = (color: 'white' | 'black', pgn: string) => new Repertoire(color, pgnToMoves(pgn).moves);
 
@@ -17,6 +17,17 @@ const stats = (moves: [uci: string, san: string, games: number][]): ExplorerResp
 };
 
 describe('gap finder', () => {
+  it('bounds a prepared reply missing from the statistics, so the lines behind it are shortened', () => {
+    const r = rep('white', '1. e4 e5 (1... a6 2. d4 b5 3. Bd3 Bb7 4. Nf3) 2. Nf3 *');
+    const table = new Map([[after('e2e4'), stats([['e7e5', 'e5', 97], ['c7c5', 'c5', 3]])]]);
+    const report = findGaps(r, (fen) => table.get(fen));
+    expect(report.reached.get(after('e2e4', 'a7a6'))).toBe(0); // every move played is listed
+    const kept = keptPositions(trainingPositions(r), (f) => report.reached.get(f), 0.01);
+    expect(kept.has(after('e2e4', 'e7e5'))).toBe(true);
+    expect(kept.has(after('e2e4', 'a7a6'))).toBe(false);
+    expect(kept.has(after('e2e4', 'a7a6', 'd2d4', 'b7b5'))).toBe(false);
+  });
+
   it('finds unprepared opponent moves, weighted by their frequency', () => {
     const r = rep('white', '1. e4 e5 (1... c5 2. Nf3) 2. Nf3 *');
     const table = new Map([[after('e2e4'), stats([['e7e5', 'e5', 50], ['c7c5', 'c5', 30], ['e7e6', 'e6', 20]])]]);

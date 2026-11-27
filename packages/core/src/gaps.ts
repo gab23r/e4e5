@@ -58,7 +58,8 @@ export interface GapReport {
   belowCutoff: number;
   /**
    * Probability of reaching each explored position, and of the positions just past them too rare
-   * to explore (under `cutoff`). Positions behind missing statistics are not in it.
+   * to explore (under `cutoff`); a prepared reply missing from the statistics (too rare) gets an
+   * upper bound (the share of the moves not listed). Positions behind missing statistics are not in it.
    */
   reached: Map<string, number>;
   /** Opponent positions explored without statistics, most likely first: fetch them, run again. */
@@ -108,7 +109,14 @@ interface Edge {
 type Node =
   | { kind: 'no-answer' | 'line-end' | 'no-stats'; stats: boolean; edges: Edge[] }
   | { kind: 'mine'; edges: Edge[] }
-  | { kind: 'stats'; edges: Edge[]; holes: { move: { uci: string; san: string }; share: number }[]; rest: number };
+  | {
+      kind: 'stats';
+      edges: Edge[];
+      holes: { move: { uci: string; san: string }; share: number }[];
+      rest: number;
+      /** Replies of the repertoire missing from the statistics (too rare at this level): not followed. */
+      unlisted: RepMove[];
+    };
 
 export function findGaps(
   rep: Repertoire,
@@ -144,7 +152,8 @@ export function findGaps(
       else holes.push({ move: { uci: em.uci, san: em.san }, share });
     }
     // Rare moves beyond the ones listed by the explorer: unprepared, too small to list.
-    return { kind: 'stats', edges, holes, rest: Math.max(0, 1 - seen) };
+    const unlisted = moves.filter((m) => !stats.moves.some((em) => em.uci === m.uci));
+    return { kind: 'stats', edges, holes, rest: Math.max(0, 1 - seen), unlisted };
   };
 
   const nodes = new Map<string, Node>();
@@ -264,6 +273,10 @@ export function findGaps(
         }
         lost += p * node.rest;
         stop(p * node.rest, 'hole');
+        // A prepared reply too rare to be listed: at most the share of the moves not listed. Its
+        // position gets this bound (the lines behind it are shortened on it), unless explored by
+        // another move order.
+        for (const m of node.unlisted) if (!prob.has(m.toFen)) reached.set(m.toFen, Math.max(reached.get(m.toFen) ?? 0, p * node.rest));
         break;
       }
     }

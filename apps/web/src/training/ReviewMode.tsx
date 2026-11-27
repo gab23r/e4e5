@@ -164,7 +164,7 @@ function weightedPick<T>(items: T[], chance: (t: T) => number | undefined, isMai
 }
 
 /**
- * Spaced-repetition review: positions due first (oldest first), then new ones, following the
+ * Spaced-repetition review: the new lines of the day first, then the positions due (oldest first), following the
  * line when the opponent's reply leads to another position waiting to be asked. On demand,
  * "review ahead" continues with learnt positions that are not due yet (soonest first).
  */
@@ -179,12 +179,17 @@ export function ReviewMode({
   chanceOf,
   learntElsewhere = 0,
   noNewLimit = false,
+  addNew = 0,
+  onAddedNew,
   sessionKey,
 }: {
   sources: Source[];
   newPerDay: number;
   /** All unseen positions are available (e.g. training a chosen subtree). */
   noNewLimit?: boolean;
+  /** New lines to add to today's (Accueil › Apprendre plus), once; then `onAddedNew`. */
+  addNew?: number;
+  onAddedNew?: () => void;
   /** `played`: the wrong moves played before (UCI, in order). */
   onReview: (source: Source, fen: string, uci: string, grade: Grade, played?: string[]) => void;
   onCounts: (c: { dueLines: number; freshLines: number; reviewed: number; asked: number; firstTry: number }) => void;
@@ -211,6 +216,13 @@ export function ReviewMode({
   /** The session put aside when the page was left (e.g. for the explorer): back where it was. */
   const [saved] = useState(() => (sessionKey ? restore(savedSession<SavedReview>(sessionKey), sources) : undefined));
   const [extraNew, setExtraNew] = useState(saved?.extraNew ?? 0);
+  const added = useRef(false);
+  useEffect(() => {
+    if (addNew <= 0 || added.current) return;
+    added.current = true;
+    setExtraNew((n) => n + addNew);
+    onAddedNew?.();
+  }, [addNew]);
   const [ahead, setAhead] = useState(saved?.ahead ?? false);
   /** Positions (fen) answered in this session, and when last (not asked again when reviewing ahead). */
   const answered = useRef(saved?.answered ?? new Map<string, number>());
@@ -306,7 +318,8 @@ export function ReviewMode({
     upcoming.sort((a, b) => a.at - b.at);
     const nextDue = upcoming[0] ? new Date(upcoming[0].at) : undefined;
     const early = upcoming.filter((p) => !answered.current.has(p.target.fen));
-    const all: Item[] = [...due, ...fresh, ...(ahead ? early : [])];
+    // The new lines of the day first, then the reviews.
+    const all: Item[] = [...fresh, ...due, ...(ahead ? early : [])];
     // Answered a moment ago: after the others (still asked when nothing else is left).
     const recent = (p: Item) => now - (answered.current.get(p.target.fen) ?? -Infinity) < RECENT_MS;
     const items = [...all.filter((p) => !recent(p)), ...all.filter(recent)];
@@ -842,13 +855,15 @@ function Drill({
   }, [revealed, hinted, asking, expected, alternative, isNew, round]);
 
   const chapter = useMemo(() => source.chapterOf(target.fen, expected.uci), [source, target.fen, expected.uci]);
+  /** This position in the repertoire editor (its chapter, the line on the board). */
+  const repertoireTo = `/r/${source.id}?${new URLSearchParams({ ...(chapter ? { chapter: chapter.id } : {}), line: moves.map((m) => m.uci).join(',') })}`;
 
   return (
     <div className="editor play-screen">
       <div className="editor-board">
         {/* The repertoire and chapter of the question: a link to this position in the editor. */}
         <Link
-          to={`/r/${source.id}?${new URLSearchParams({ ...(chapter ? { chapter: chapter.id } : {}), line: moves.map((m) => m.uci).join(',') })}`}
+          to={repertoireTo}
           className="board-rep"
           title={t('Ouvrir cette position dans votre répertoire', 'Open this position in your repertoire')}
         >
@@ -910,6 +925,10 @@ function Drill({
         disabled={!asking}
         solutionTitle={t('Jouer le coup attendu (compté comme aidé), puis la ligne continue', 'Play the expected move (counted as helped), then the line goes on')}
         onHint={hint}
+        onBack={onBack}
+        canBack={canBack}
+        onNext={onSkip}
+        repertoireTo={repertoireTo}
       />
     </div>
   );

@@ -5,6 +5,7 @@
  */
 import type { Color, RepMove } from '@e4e5/core';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useLayoutEffect, useRef } from 'react';
 import { San } from '../components/Nag';
@@ -192,25 +193,57 @@ export function LineDone({ text }: { text: string }) {
   );
 }
 
-/** One button: first the piece to move (Indice), then the solution. */
+/**
+ * The actions under the board: the line before (as a swipe to the right), one button for the
+ * piece to move (Indice) then the solution, the next line (as a swipe to the left), and the
+ * position in the repertoire.
+ */
 export function DrillActions({
   hinted,
   disabled,
   solutionTitle,
   onHint,
+  onBack,
+  canBack = false,
+  onNext,
+  repertoireTo,
 }: {
   /** The piece is shown (or the answer): the button gives the solution. */
   hinted: boolean;
   disabled: boolean;
   solutionTitle: string;
   onHint: () => void;
+  onBack?: () => void;
+  canBack?: boolean;
+  onNext?: () => void;
+  /** The position in the repertoire editor. */
+  repertoireTo?: string;
 }) {
+  const navigate = useNavigate();
   return (
     <div className="play-actions">
+      {onBack && (
+        <button type="button" onClick={onBack} disabled={!canBack} title={t('Ligne précédente', 'Previous line')}>
+          <Icon name="back" size={24} />
+          {t('Précédente', 'Previous')}
+        </button>
+      )}
       <button type="button" onClick={onHint} disabled={disabled} title={hinted ? solutionTitle : t('Montrer la pièce à jouer', 'Show the piece to move')}>
         <Icon name={hinted ? 'flag' : 'bulb'} size={24} />
         {hinted ? t('Solution', 'Solution') : t('Indice', 'Hint')}
       </button>
+      {onNext && (
+        <button type="button" onClick={onNext} title={t('Ligne suivante (celle-ci est reposée plus tard)', 'Next line (this one is asked again later)')}>
+          <Icon name="chevron" size={24} />
+          {t('Suivante', 'Next')}
+        </button>
+      )}
+      {repertoireTo && (
+        <button type="button" onClick={() => navigate(repertoireTo)} title={t('Ouvrir cette position dans votre répertoire', 'Open this position in your repertoire')}>
+          <Icon name="book" size={24} />
+          {t('Répertoire', 'Repertoire')}
+        </button>
+      )}
     </div>
   );
 }

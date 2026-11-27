@@ -1192,6 +1192,12 @@ a.card.home-gap { display: flex; flex-direction: column; gap: 22px; align-items:
 .home-progress-label { flex-basis: 100%; color: var(--text-2); font-size: 0.9rem; }
 .home-progress-value { font-size: 3.25rem; font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; }
 .home-progress-delta { color: var(--rep); font-weight: 600; }
+/* Today: two tiles, the new lines to learn and the lines to review (a link to learn more at 0). */
+.home-today-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.home-count { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: var(--radius); background: var(--surface-2); color: var(--text-2); font-size: 0.88rem; }
+.home-count strong { font-size: 1.8rem; line-height: 1.1; color: var(--muted); }
+.home-count.on strong { color: var(--text); }
+.home-count-more { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; font-weight: 700; color: var(--accent); }
 .home-progress-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .home-progress-stats { display: flex; gap: 16px; flex-wrap: wrap; color: var(--text-2); font-size: 0.9rem; }
 .home-progress-stat strong { color: var(--text); font-size: 1.1rem; }

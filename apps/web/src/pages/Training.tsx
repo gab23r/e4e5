@@ -137,6 +137,12 @@ export function Training({ me }: { me: Me }) {
           chanceOf={chanceOf}
           learntElsewhere={learntElsewhere}
           sessionKey={`review|${sessionKey}`}
+          addNew={Number(params.get('more')) || 0}
+          onAddedNew={() => {
+            const q = new URLSearchParams(params);
+            q.delete('more');
+            setParams(q, { replace: true });
+          }}
           idle={<Progress sources={sources} />}
         />
       ) : (
