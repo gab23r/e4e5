@@ -226,7 +226,7 @@ export const localApi = {
     const root = positionKey(fen);
     const first = s && (await s.one(root));
     if (!s || !first) notOnDevice();
-    const { missing: _m, approximate: _a, ...found } = await suggestMoves(s.stored, root, { data: first, exact: true }, depth, color);
+    const { missing: _m, approximate: _a, ...found } = await suggestMoves(s.stored, root, { data: first, exact: true }, depth, color, undefined, true);
     return { ...found, steps: REACH_STEPS, pending: 0 };
   },
   gaps: async (speeds, ratings, cutoff) => {

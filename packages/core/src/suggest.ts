@@ -56,6 +56,9 @@ export interface Suggestions {
  * `depth`: how many of the steps to go through (0: each move's own win rate; default: all).
  * `local`: a synchronous reader of a local statistics file (the server's game database), for the
  * wide and deep search; without it, step by step on `storedStats`.
+ * `absentIsRare`: `storedStats` holds every position there is (the statistics files on the
+ * device): one it does not have is too rare, the line ends there (as with `local`), instead of a
+ * position to fetch that stops the search at the step before.
  */
 export async function suggestMoves(
   storedStats: StoredStats,
@@ -64,6 +67,7 @@ export async function suggestMoves(
   depth = REACH_STEPS.length,
   color: Color = turnOf(root),
   local?: LocalStats,
+  absentIsRare = false,
 ): Promise<Suggestions> {
   const steps = REACH_STEPS.slice(0, depth);
   if (local) {
@@ -83,12 +87,17 @@ export async function suggestMoves(
       approximate: rootStats.exact ? [] : [root],
     };
   }
-  const known = new Map([[root, rootStats]]);
+  // null: absent from the statistics (too rare, `absentIsRare`), the line ends there.
+  const known = new Map<string, { data: ExplorerResponse; exact: boolean } | null>([[root, rootStats]]);
   // On the opponent's turn every likely move of its is searched (none pruned), each from the
   // position after it: more positions.
   const mine = turnOf(root) === color;
   const maxPositions = mine ? MAX_POSITIONS : 2 * MAX_POSITIONS;
-  const run = (minReach: number, only?: string[]) => bestMoves(root, (f) => known.get(f)?.data, { minReach, only, color });
+  const statsAt = (f: string) => {
+    const k = known.get(f);
+    return k === undefined ? undefined : (k?.data ?? null);
+  };
+  const run = (minReach: number, only?: string[]) => bestMoves(root, statsAt, { minReach, only, color });
 
   // Each move's own win rate first (nothing explored), then each step in turn, loading the
   // stored positions it reaches (the deeper ones are only reached once their parents are known).
@@ -100,7 +109,9 @@ export async function suggestMoves(
     let next = run(step, only);
     for (let pass = 0; pass < 16 && next.missing.length; pass++) {
       const found = await storedStats(next.missing.map((m) => m.fen));
-      if (!found.size) break;
+      if (absentIsRare) {
+        for (const m of next.missing) if (!found.has(m.fen)) known.set(m.fen, null);
+      } else if (!found.size) break;
       for (const [f, s] of found) known.set(f, s);
       next = run(step, only);
     }
@@ -118,6 +129,6 @@ export async function suggestMoves(
     reach,
     target: steps.at(-1) ?? REACH_STEPS[0]!,
     missing,
-    approximate: [...known].filter(([, s]) => !s.exact).map(([f]) => f),
+    approximate: [...known].filter(([, s]) => s && !s.exact).map(([f]) => f),
   };
 }
